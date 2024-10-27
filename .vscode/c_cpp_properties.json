@@ -1,16 +1,21 @@
 {
+    "env": {
+        "nodeInclude": "${env:NVM_BIN}/../include/node/**"
+    },
     "configurations": [
         {
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/usr/local/share/nvm/versions/node/v18.19.1/include/node/**"
+                "${nodeInclude}"
             ],
-            "defines": [],
+            "defines": [
+                "DEBUG=1"
+            ],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
-            "cppStandard": "c++14",
-            "intelliSenseMode": "linux-clang-x64"
+            "cppStandard": "c++20",
+            "intelliSenseMode": "linux-gcc-x64"
         }
     ],
     "version": 4

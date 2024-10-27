@@ -1,0 +1,19 @@
+{
+	"image": "mcr.microsoft.com/devcontainers/cpp:1-ubuntu-24.04",
+	"features": {
+		"ghcr.io/devcontainers/features/node:1": {
+			"nodeGypDependencies": true,
+			"version": "18",
+			"pnpmVersion": "latest",
+			"nvmVersion": "latest"
+		}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-vscode.cmake-tools",
+				"ms-vscode.cpptools"
+			]
+		}
+	}
+}

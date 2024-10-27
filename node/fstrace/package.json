@@ -1,6 +1,12 @@
 {
   "name": "fstrace",
   "version": "0.0.2",
+  "license": "MIT",
+  "repository": "https://github.com/bmiddha/fstrace",
+  "author": {
+    "name": "Bharat Middha",
+    "email": "5100938+bmiddha@users.noreply.github.com"
+  },
   "os": [
     "linux"
   ],
