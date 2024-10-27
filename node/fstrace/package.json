@@ -1,8 +1,11 @@
 {
   "name": "fstrace",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "license": "MIT",
-  "repository": "https://github.com/bmiddha/fstrace",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bmiddha/fstrace.git"
+  },
   "author": {
     "name": "Bharat Middha",
     "email": "5100938+bmiddha@users.noreply.github.com"
@@ -17,9 +20,13 @@
     "glibc"
   ],
   "files": [
-    "fstrace"
+    "fstrace",
+    "README.md"
   ],
   "bin": {
-    "fstrace": "./fstrace"
+    "fstrace": "fstrace"
+  },
+  "scripts": {
+    "prepare": "cp ../../README.md ."
   }
 }

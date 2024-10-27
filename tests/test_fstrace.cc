@@ -6,7 +6,7 @@ int main(int argc, char *argv[])
 
   char testShPath[1024];
   getcwd(testShPath, sizeof(testShPath));
-  strcat(testShPath, "/../test.sh");
+  strcat(testShPath, "/../tests/test.sh");
   char *args[] = {"/bin/bash", testShPath, "10", NULL};
 
   pid_t child = fork();
