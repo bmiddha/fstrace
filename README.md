@@ -31,7 +31,7 @@ File access reports are printed to file descriptor 3 in the following format:
 ## Installing
 
 ```sh
-npm i -g fstrace@0.0.2
+npm i -g fstrace
 ```
 
 ## Building from source
