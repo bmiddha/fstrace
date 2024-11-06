@@ -915,14 +915,6 @@ int run_tracer(pid_t initial_pid)
             (*fs_op).path[strlen((*fs_op).path) - 1] = '\0';
           }
 
-          if ((*fs_op).op[0] == 'E')
-          {
-            {
-              strcat((*fs_op).path, "/*");
-            }
-            (*fs_op).op[0] = 'R';
-          }
-
 #ifdef DEBUG
           if (strlen((*fs_op).comment) > 0)
           {
