@@ -208,6 +208,16 @@ void read_cstring_from_tracee(pid_t pid, __u64 addr, char *buffer, size_t buffer
 void read_maybe_relative_pathname_from_tracee(pid_t pid, __u64 addr, char *buffer, size_t buffer_size)
 {
   read_cstring_from_tracee(pid, addr, buffer, buffer_size);
+
+  // trim ./
+  if (buffer[0] == '.' && buffer[1] == '/')
+  {
+    memmove(buffer, buffer + 2, strlen(buffer) - 2);
+  }
+
+#if DEBUG
+  dprintf(4, "buffer: %s\n", buffer);
+#endif
   if (buffer[0] != '/')
   {
     char cwd[PATH_MAX];
@@ -218,6 +228,16 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, __u64 addr, char *buffe
       perror("readlink");
       return;
     }
+#if DEBUG
+    dprintf(4, "cwd: %s\n", cwd);
+#endif
+
+    if (strlen(buffer) == 1 && buffer[0] == '.')
+    {
+      strncpy(buffer, cwd, buffer_size);
+      return;
+    }
+
     char temp_buffer[PATH_MAX];
     if (buffer[strlen(buffer) - 1] == '/')
     {
@@ -234,16 +254,26 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, __u64 addr, char *buffe
 void parse_dirfd_pathname_from_tracee(pid_t pid, __u64 dirfd, __u64 pathname, char *fullpath, size_t fullpath_size)
 {
   char path[PATH_MAX];
-  read_cstring_from_tracee(pid, pathname, path, PATH_MAX);
-  if (path[0] == '/')
+  if ((int)dirfd == AT_FDCWD)
   {
-    sprintf(fullpath, "%s", path);
+#if DEBUG
+    dprintf(4, "AT_FDCWD\n");
+#endif
+    read_maybe_relative_pathname_from_tracee(pid, pathname, path, PATH_MAX);
   }
   else
   {
-    char dirpath[PATH_MAX];
-    get_fd_path(pid, dirfd, dirpath);
-    sprintf(fullpath, "%s/%s", dirpath, path);
+    read_cstring_from_tracee(pid, pathname, path, PATH_MAX);
+    if (path[0] == '/')
+    {
+      sprintf(fullpath, "%s", path);
+    }
+    else
+    {
+      char dirpath[PATH_MAX];
+      get_fd_path(pid, dirfd, dirpath);
+      sprintf(fullpath, "%s/%s", dirpath, path);
+    }
   }
 }
 
@@ -572,7 +602,7 @@ int run_tracer(pid_t initial_pid)
         // int access(const char *pathname, int mode);
         case __NR_access:
         {
-          read_cstring_from_tracee(child_pid, arg0, fs_op[*fs_op_idx].path, PATH_MAX);
+          read_maybe_relative_pathname_from_tracee(child_pid, arg0, fs_op[*fs_op_idx].path, PATH_MAX);
           sprintf(fs_op[*fs_op_idx].comment, "access");
           fs_op[*fs_op_idx].op[0] = 'R';
           fs_op[*fs_op_idx].file_type = '?';
