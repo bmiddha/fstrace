@@ -385,6 +385,7 @@ int run_tracer(pid_t initial_pid)
 #if DEBUG
         dprintf(4, "initial child %d exited\n", child_pid);
 #endif
+        exit(WSTOPSIG(status));
         break;
       }
       continue;
