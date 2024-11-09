@@ -37,6 +37,10 @@ add_custom_command(
         ${PROJECT_SOURCE_DIR}/node/fstrace/${PROJECT_NAME}
 )
 
+include(CTest)
+add_test(NAME exit-code-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/exit-code-passthrough.sh)
+add_test(NAME signal-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/signal-passthrough.sh)
+
 # # Install
 # install(TARGETS fstrace DESTINATION bin)
 
