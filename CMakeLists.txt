@@ -40,38 +40,3 @@ add_custom_command(
 include(CTest)
 add_test(NAME exit-code-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/exit-code-passthrough.sh)
 add_test(NAME signal-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/signal-passthrough.sh)
-
-# # Install
-# install(TARGETS fstrace DESTINATION bin)
-
-# # Tests
-# include(CTest)
-
-# add_executable(test_fstrace tests/test_fstrace.cc)
-# add_test(NAME TestFsTrace COMMAND test_fstrace)
-# target_include_directories(test_fstrace PUBLIC "${PROJECT_SOURCE_DIR}")
-
-# # Build addon
-# execute_process(
-#     COMMAND node -p "require('path').resolve(process.execPath, '../../include/node')"
-#     OUTPUT_VARIABLE NODE_INC
-#     OUTPUT_STRIP_TRAILING_WHITESPACE
-# )
-
-# include_directories(${NODE_INC})
-# add_library(addon SHARED src/fstrace_addon.cc)
-# set_target_properties(addon PROPERTIES PREFIX "" SUFFIX ".${ARCH}.node")
-
-# # Copy addon files to node package
-# add_custom_command(
-#     TARGET addon POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         $<TARGET_FILE:addon>
-#         ${PROJECT_SOURCE_DIR}/node/@fstrace/${ARCH}/${PROJECT_NAME}.${ARCH}.node
-# )
-# add_custom_command(
-#     TARGET addon POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         $<TARGET_FILE:fstrace>
-#         ${PROJECT_SOURCE_DIR}/node/@fstrace/${ARCH}/${PROJECT_NAME}.${ARCH}
-# )
