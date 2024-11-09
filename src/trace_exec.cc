@@ -23,8 +23,8 @@
 #include <linux/seccomp.h>
 
 #if DEBUG
-#define DEBUG_FD 2
-#define LOG_DEBUG(fmt, ...) dprintf(4, "[DEBUG] " fmt "\n", ##__VA_ARGS__);
+#define DEBUG_FD 4
+#define LOG_DEBUG(fmt, ...) dprintf(DEBUG_FD, "[DEBUG] " fmt "\n", ##__VA_ARGS__);
 #else
 #define LOG_DEBUG(fmt, ...)
 #endif
@@ -386,7 +386,8 @@ int run_tracer(pid_t initial_pid)
              (status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8))))
     {
       LOG_DEBUG("Child %d stopped by seccomp or syscall", child_pid)
-      LOG_DEBUG("===========================\nBEGIN handle_syscall")
+      LOG_DEBUG("===========================")
+      LOG_DEBUG("BEGIN handle_syscall")
 
       struct ptrace_syscall_info info;
       if (ptrace(PTRACE_GET_SYSCALL_INFO, child_pid, sizeof(info), &info) == -1)
@@ -767,8 +768,24 @@ int run_tracer(pid_t initial_pid)
         LOG_DEBUG("PTRACE_SYSCALL_INFO_SECCOMP END: %llu", nr)
         if (ptrace(PTRACE_SYSCALL, child_pid, 0, 0) != 0)
         {
-          fprintf(stderr, "\nptrace(PTRACE_SYSCALL)\n");
-          return -1;
+          if (errno)
+          {
+            if (errno == ESRCH)
+            {
+              LOG_DEBUG("Child %d died unexpectedly", child_pid)
+              if (child_pid == initial_pid)
+              {
+                exit(0);
+              }
+              pid_info_map.erase(child_pid);
+              continue;
+            }
+            else
+            {
+              fprintf(stderr, "\nptrace(PTRACE_SYSCALL)\n");
+              return -1;
+            }
+          }
         }
       }
 
@@ -908,8 +925,6 @@ int run_tracer(pid_t initial_pid)
           if (file_type == '?')
           {
             LOG_DEBUG("file_type missing. stating %s", (fs_op[i]).path)
-
-#endif
             struct stat stat_result;
             if (stat((fs_op[i]).path, &stat_result) == 0)
             {
@@ -932,7 +947,8 @@ int run_tracer(pid_t initial_pid)
 #ifdef DEBUG
           if (strlen((fs_op[i]).comment) > 0)
           {
-            LOG_DEBUG("# %s\n%c%c %s", (fs_op[i]).comment, (fs_op[i]).op[0], file_type, (fs_op[i]).path)
+            LOG_DEBUG("# %s", (fs_op[i]).comment)
+            LOG_DEBUG("%c%c %s", (fs_op[i]).op[0], file_type, (fs_op[i]).path)
             dprintf(3, "# %s\n%c%c %s\n", (fs_op[i]).comment, (fs_op[i]).op[0], file_type, (fs_op[i]).path);
           }
           else
@@ -951,7 +967,8 @@ int run_tracer(pid_t initial_pid)
         }
       }
 
-      LOG_DEBUG("END handle_syscall\n==============================")
+      LOG_DEBUG("END handle_syscall")
+      LOG_DEBUG("==============================")
     }
     else if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_VFORK << 8)))
     {
