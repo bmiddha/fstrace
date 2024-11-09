@@ -22,7 +22,12 @@
 #include <linux/filter.h>
 #include <linux/seccomp.h>
 
-#define DEBUG_FD 4
+#if DEBUG
+#define DEBUG_FD 2
+#define LOG_DEBUG(fmt, ...) dprintf(4, "[DEBUG] " fmt "\n", ##__VA_ARGS__);
+#else
+#define LOG_DEBUG(fmt, ...)
+#endif
 
 struct ptrace_syscall_info
 {
@@ -111,12 +116,12 @@ int run_tracee(char *program, char **args)
   ptrace(PTRACE_TRACEME, 0, 0, 0);
   raise(SIGSTOP);
 #if DEBUG
-  dprintf(DEBUG_FD, "execvp %s with args: ", program);
+  LOG_DEBUG("execvp %s with args: ", program)
   for (char **arg = args; *arg; arg++)
   {
-    dprintf(DEBUG_FD, "%s ", *arg);
+    LOG_DEBUG("%s ", *arg)
   }
-  dprintf(DEBUG_FD, "\n");
+  LOG_DEBUG("")
 #endif
   return execvp(program, args);
 }
@@ -217,9 +222,7 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, __u64 addr, char *buffe
     memmove(buffer, buffer + 2, strlen(buffer) - 2);
   }
 
-#if DEBUG
-  dprintf(DEBUG_FD, "buffer: %s\n", buffer);
-#endif
+  LOG_DEBUG("buffer: %s", buffer)
   if (buffer[0] != '/')
   {
     char cwd[PATH_MAX];
@@ -230,9 +233,7 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, __u64 addr, char *buffe
       perror("readlink");
       return;
     }
-#if DEBUG
-    dprintf(DEBUG_FD, "cwd: %s\n", cwd);
-#endif
+    LOG_DEBUG("cwd: %s", cwd)
 
     if (strlen(buffer) == 1 && buffer[0] == '.')
     {
@@ -258,9 +259,7 @@ void parse_dirfd_pathname_from_tracee(pid_t pid, __u64 dirfd, __u64 pathname, ch
   char path[PATH_MAX];
   if ((int)dirfd == AT_FDCWD)
   {
-#if DEBUG
-    dprintf(DEBUG_FD, "AT_FDCWD\n");
-#endif
+    LOG_DEBUG("AT_FDCWD")
     read_maybe_relative_pathname_from_tracee(pid, pathname, fullpath, PATH_MAX);
   }
   else
@@ -317,20 +316,14 @@ std::map<pid_t, struct pid_info> pid_info_map = {};
 int run_tracer(pid_t initial_pid)
 {
   pid_t child_pid = initial_pid;
-#if DEBUG
-  dprintf(DEBUG_FD, "Tracing pid %d\n", child_pid);
-#endif
+  LOG_DEBUG("Tracing pid %d", child_pid)
   int status = 0;
-#if DEBUG
-  dprintf(DEBUG_FD, "wait for child to stop after TRACEME %d\n", child_pid);
-#endif
+  LOG_DEBUG("wait for child to stop after TRACEME %d", child_pid)
   do
   {
     wait4(child_pid, &status, 0, NULL);
   } while (!WIFSTOPPED(status));
-#if DEBUG
-  dprintf(DEBUG_FD, "child stopped\n");
-#endif
+  LOG_DEBUG("child stopped")
 
   int ptrace_options = 0;
   ptrace_options |= PTRACE_O_TRACESECCOMP;
@@ -342,17 +335,13 @@ int run_tracer(pid_t initial_pid)
   ptrace_options |= PTRACE_O_TRACECLONE;
   ptrace_options |= PTRACE_O_TRACEEXIT;
 
-#if DEBUG
-  dprintf(DEBUG_FD, "set ptrace options %d\n", ptrace_options);
-#endif
+  LOG_DEBUG("set ptrace options %d", ptrace_options)
   if (ptrace(PTRACE_SETOPTIONS, child_pid, 0, ptrace_options) == -1)
   {
     fprintf(stderr, "\nptrace(PTRACE_SETOPTIONS)\n");
     exit(-1);
   }
-#if DEBUG
-  dprintf(DEBUG_FD, "continue from initial stop\n");
-#endif
+  LOG_DEBUG("continue from initial stop")
   if (ptrace(PTRACE_CONT, child_pid, 0, 0) == -1)
   {
     fprintf(stderr, "\nchild %d ptrace(PTRACE_CONT)\n", child_pid);
@@ -379,14 +368,10 @@ int run_tracer(pid_t initial_pid)
 
     if (WIFEXITED(status) || WIFSIGNALED(status))
     {
-#if DEBUG
-      dprintf(DEBUG_FD, "child %d exited with status %d\n", child_pid, WSTOPSIG(status));
-#endif
+      LOG_DEBUG("child %d exited with status %d", child_pid, WSTOPSIG(status))
       if (child_pid == initial_pid)
       {
-#if DEBUG
-        dprintf(DEBUG_FD, "initial child %d exited\n", child_pid);
-#endif
+        LOG_DEBUG("initial child %d exited", child_pid)
         exit(WSTOPSIG(status));
         break;
       }
@@ -400,13 +385,8 @@ int run_tracer(pid_t initial_pid)
     else if ((WIFSTOPPED(status) && (WSTOPSIG(status) & 0x80)) ||
              (status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8))))
     {
-#if DEBUG
-      dprintf(DEBUG_FD, "Child %d stopped by seccomp or syscall\n", child_pid);
-#endif
-#if DEBUG
-      dprintf(DEBUG_FD, "===========================\n");
-      dprintf(DEBUG_FD, "BEGIN handle_syscall\n");
-#endif
+      LOG_DEBUG("Child %d stopped by seccomp or syscall", child_pid)
+      LOG_DEBUG("===========================\nBEGIN handle_syscall")
 
       struct ptrace_syscall_info info;
       if (ptrace(PTRACE_GET_SYSCALL_INFO, child_pid, sizeof(info), &info) == -1)
@@ -438,7 +418,7 @@ int run_tracer(pid_t initial_pid)
         // unsigned long long arg5 = thread_op->args[5];
 
 #if DEBUG
-        dprintf(DEBUG_FD, "PTRACE_SYSCALL_INFO_SECCOMP BEGIN: %llu\n", nr);
+        LOG_DEBUG("PTRACE_SYSCALL_INFO_SECCOMP BEGIN: %llu", nr)
 #endif
         switch (nr)
         {
@@ -497,26 +477,18 @@ int run_tracer(pid_t initial_pid)
         // int openat(int dirfd, const char *pathname, int flags, mode_t mode);
         case __NR_openat:
         {
-#if DEBUG
-          dprintf(DEBUG_FD, "openat\n");
-#endif
+          LOG_DEBUG("openat")
           parse_dirfd_pathname_from_tracee(child_pid, arg0, arg1, fs_op[*fs_op_idx].path, PATH_MAX);
-#if DEBUG
-          dprintf(DEBUG_FD, "pathname: %s\n", fs_op[*fs_op_idx].path);
-#endif
+          LOG_DEBUG("pathname: %s", fs_op[*fs_op_idx].path)
           int access_mode = arg2 & 3;
           if (access_mode == O_RDONLY)
           {
-#if DEBUG
-            dprintf(DEBUG_FD, "O_RDONLY\n");
-#endif
+            LOG_DEBUG("O_RDONLY")
             fs_op[*fs_op_idx].op[0] = 'R';
           }
           else if ((access_mode == O_WRONLY) || (access_mode == O_RDWR))
           {
-#if DEBUG
-            dprintf(DEBUG_FD, "O_WRONLY or O_RDWR\n");
-#endif
+            LOG_DEBUG("O_WRONLY or O_RDWR")
             fs_op[*fs_op_idx].op[0] = 'W';
           }
           // if (arg2 & O_DIRECTORY)
@@ -792,9 +764,7 @@ int run_tracer(pid_t initial_pid)
           break;
         }
         }
-#if DEBUG
-        dprintf(DEBUG_FD, "PTRACE_SYSCALL_INFO_SECCOMP END: %llu\n", nr);
-#endif
+        LOG_DEBUG("PTRACE_SYSCALL_INFO_SECCOMP END: %llu", nr)
         if (ptrace(PTRACE_SYSCALL, child_pid, 0, 0) != 0)
         {
           fprintf(stderr, "\nptrace(PTRACE_SYSCALL)\n");
@@ -812,18 +782,13 @@ int run_tracer(pid_t initial_pid)
         long rVal = info.exit.rval;
         long isError = info.exit.is_error;
 
-#if DEBUG
-        dprintf(DEBUG_FD, "PTRACE_SYSCALL_INFO_EXIT BEGIN: %llu. rVal: %ld, isError: %ld\n", thread_op->nr, rVal,
-                isError);
-#endif
+        LOG_DEBUG("PTRACE_SYSCALL_INFO_EXIT BEGIN: %llu. rVal: %ld, isError: %ld", thread_op->nr, rVal, isError)
 
         if (isError)
         {
           if (rVal == -ENOENT)
           {
-#if DEBUG
-            dprintf(DEBUG_FD, "ENOENT file %s does not exist\n", fs_op[0].path);
-#endif
+            LOG_DEBUG("ENOENT file %s does not exist", fs_op[0].path)
             fs_op[0].file_type = 'X';
           }
           else if (rVal == -EBADF)
@@ -914,9 +879,7 @@ int run_tracer(pid_t initial_pid)
           }
           }
         }
-#if DEBUG
-        dprintf(DEBUG_FD, "fs_op_idx: %d\n", *fs_op_idx);
-#endif
+        LOG_DEBUG("fs_op_idx: %d", *fs_op_idx)
 
         for (int i = 0; i < *fs_op_idx; i++)
         {
@@ -939,13 +902,13 @@ int run_tracer(pid_t initial_pid)
 #if DEBUG
           if (file_type != '?')
           {
-            dprintf(DEBUG_FD, "file_type found.\n");
+            LOG_DEBUG("file_type found.")
           }
 #endif
           if (file_type == '?')
           {
-#if DEBUG
-            dprintf(DEBUG_FD, "file_type missing. stating %s\n", (fs_op[i]).path);
+            LOG_DEBUG("file_type missing. stating %s", (fs_op[i]).path)
+
 #endif
             struct stat stat_result;
             if (stat((fs_op[i]).path, &stat_result) == 0)
@@ -969,21 +932,18 @@ int run_tracer(pid_t initial_pid)
 #ifdef DEBUG
           if (strlen((fs_op[i]).comment) > 0)
           {
-            dprintf(DEBUG_FD, "# %s\n%c%c %s\n", (fs_op[i]).comment, (fs_op[i]).op[0], file_type, (fs_op[i]).path);
+            LOG_DEBUG("# %s\n%c%c %s", (fs_op[i]).comment, (fs_op[i]).op[0], file_type, (fs_op[i]).path)
             dprintf(3, "# %s\n%c%c %s\n", (fs_op[i]).comment, (fs_op[i]).op[0], file_type, (fs_op[i]).path);
           }
           else
           {
-            dprintf(DEBUG_FD, "%c%c %s\n", (fs_op[i]).op[0], file_type, (fs_op[i]).path);
+            LOG_DEBUG("%c%c %s\n", (fs_op[i]).op[0], file_type, (fs_op[i]).path)
           }
 #else
           dprintf(3, "%c%c %s\n", (fs_op[i]).op[0], file_type, (fs_op[i]).path);
 #endif
         }
-#if DEBUG
-        dprintf(DEBUG_FD, "PTRACE_SYSCALL_INFO_EXIT END: %llu. rVal: %ld, isError: %ld\n", thread_op->nr, rVal,
-                isError);
-#endif
+        LOG_DEBUG("PTRACE_SYSCALL_INFO_EXIT END: %llu. rVal: %ld, isError: %ld", thread_op->nr, rVal, isError)
         if (ptrace(PTRACE_CONT, child_pid, 0, 0) != 0)
         {
           fprintf(stderr, "\nptrace(PTRACE_CONT)\n");
@@ -991,10 +951,7 @@ int run_tracer(pid_t initial_pid)
         }
       }
 
-#if DEBUG
-      dprintf(DEBUG_FD, "END handle_syscall\n");
-      dprintf(DEBUG_FD, "==============================\n");
-#endif
+      LOG_DEBUG("END handle_syscall\n==============================")
     }
     else if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_VFORK << 8)))
     {
@@ -1006,7 +963,7 @@ int run_tracer(pid_t initial_pid)
         fprintf(stderr, "\nptrace(PTRACE_GET_EVENTMSG)\n");
         return -1;
       }
-      dprintf(DEBUG_FD, "Child %d stopped by vfork (new child %d)\n", child_pid, new_child_pid);
+      LOG_DEBUG("Child %d stopped by vfork (new child %d)\n", child_pid, new_child_pid)
 #endif
 
       if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
@@ -1028,7 +985,7 @@ int run_tracer(pid_t initial_pid)
         fprintf(stderr, "\nptrace(PTRACE_GETEVENTMSG)\n");
         return -1;
       }
-      dprintf(DEBUG_FD, "Child %d stopped by fork (new child %d)\n", child_pid, new_child_pid);
+      LOG_DEBUG("Child %d stopped by fork (new child %d)", child_pid, new_child_pid)
 #endif
       if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
       {
@@ -1049,7 +1006,7 @@ int run_tracer(pid_t initial_pid)
         fprintf(stderr, "\nptrace(PTRACE_GETEVENTMSG)\n");
         return -1;
       }
-      dprintf(DEBUG_FD, "Child %d stopped by clone (new child %d)\n", child_pid, new_child_pid);
+      LOG_DEBUG("Child %d stopped by clone (new child %d)", child_pid, new_child_pid)
 #endif
       if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
       {
@@ -1063,9 +1020,7 @@ int run_tracer(pid_t initial_pid)
     }
     else if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)))
     {
-#if DEBUG
-      dprintf(DEBUG_FD, "Child %d stopped by exec\n", child_pid);
-#endif
+      LOG_DEBUG("Child %d stopped by exec", child_pid)
       if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
       {
         fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
@@ -1086,7 +1041,7 @@ int run_tracer(pid_t initial_pid)
         fprintf(stderr, "\nptrace(PTRACE_GETEVENTMSG)\n");
         return -1;
       }
-      dprintf(DEBUG_FD, "Child %d exited with code %lu\n", child_pid, traceeStatus);
+      LOG_DEBUG("Child %d exited with code %lu", child_pid, traceeStatus)
 #endif
       if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
       {
@@ -1100,9 +1055,7 @@ int run_tracer(pid_t initial_pid)
     }
     else if (WIFSTOPPED(status) && !(WSTOPSIG(status) & 0x80))
     {
-#if DEBUG
-      dprintf(DEBUG_FD, "Child %d. stopped with signal %d\n", child_pid, WSTOPSIG(status));
-#endif
+      LOG_DEBUG("Child %d. stopped with signal %d", child_pid, WSTOPSIG(status))
       if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
       {
         fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
@@ -1115,9 +1068,7 @@ int run_tracer(pid_t initial_pid)
     }
     else
     {
-#if DEBUG
-      dprintf(DEBUG_FD, "Child %d. unexpected stop. status: %d\n", child_pid, status);
-#endif
+      LOG_DEBUG("Child %d. unexpected stop. status: %d", child_pid, status)
       if (ptrace(PTRACE_SYSCALL, child_pid, NULL, NULL) == -1)
       {
         fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
