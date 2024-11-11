@@ -23,8 +23,7 @@
 #include <linux/seccomp.h>
 
 #if DEBUG
-#define DEBUG_FD 4
-#define LOG_DEBUG(fmt, ...) dprintf(DEBUG_FD, "[DEBUG] " fmt "\n", ##__VA_ARGS__);
+#define LOG_DEBUG(fmt, ...) dprintf(DEBUGFD, "[DEBUG] " fmt "\n", ##__VA_ARGS__);
 #else
 #define LOG_DEBUG(fmt, ...)
 #endif

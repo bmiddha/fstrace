@@ -20,13 +20,17 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 
 # Build fstrace
 add_executable(fstrace src/fstrace.cc)
+
+set(DEBUG_FD 1)
+target_compile_definitions(fstrace PRIVATE DEBUGFD=${DEBUG_FD})
+
 set_target_properties(fstrace PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
 target_include_directories(fstrace PUBLIC "${PROJECT_BINARY_DIR}")
 target_compile_features(fstrace PUBLIC cxx_std_20)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  message(STATUS "Setting DEBUG flag. FD4 will have debug log. and FD3 will have comments with syscall info.")
   target_compile_definitions(fstrace PRIVATE DEBUG)
+  message(STATUS "Setting DEBUG flag. DEBUG_FD (${DEBUG_FD}) will have debug log. and FD3 will have comments with syscall info.")
 endif()
 
 set_target_properties(fstrace PROPERTIES
