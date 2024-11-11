@@ -21,10 +21,12 @@
   ],
   "files": [
     "fstrace",
+    "fstrace-debug",
     "README.md"
   ],
   "bin": {
-    "fstrace": "fstrace"
+    "fstrace": "fstrace",
+    "fstrace-debug": "fstrace-debug"
   },
   "scripts": {
     "prepare": "cp ../../README.md ."
