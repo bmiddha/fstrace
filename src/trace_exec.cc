@@ -291,6 +291,7 @@ struct pid_info
   struct fs_operation fs_ops[2];
   unsigned long long nr;
   unsigned long long args[6];
+  // char comment[1000];
   // union
   // {
   //   struct
@@ -308,14 +309,48 @@ struct pid_info
   //     char path[PATH_MAX];
   //     char access_mode;
   //   } op_stat;
+  //   struct
+  //   {
+  //     char path[PATH_MAX];
+  //     char access_mode;
+  //   } op_exec;
   // };
 };
 
 std::map<pid_t, struct pid_info> pid_info_map = {};
+pid_t initial_pid;
 
-int run_tracer(pid_t initial_pid)
+int ptrace_syscall(pid_t child_pid, int status)
 {
-  pid_t child_pid = initial_pid;
+  if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) != 0)
+  {
+    if (errno)
+    {
+      if (errno == ESRCH)
+      {
+        LOG_DEBUG("Child %d died unexpectedly", child_pid)
+        if (child_pid == initial_pid)
+        {
+          exit(0);
+        }
+        pid_info_map.erase(child_pid);
+        return 0;
+      }
+      else
+      {
+        fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
+        fprintf(stderr, "Error: %s\n", strerror(errno));
+        return -1;
+      }
+    }
+  }
+
+  return 0;
+}
+
+int run_tracer(pid_t child_pid)
+{
+  initial_pid = child_pid;
   LOG_DEBUG("Tracing pid %d", child_pid)
   int status = 0;
   LOG_DEBUG("wait for child to stop after TRACEME %d", child_pid)
@@ -766,26 +801,9 @@ int run_tracer(pid_t initial_pid)
         }
         }
         LOG_DEBUG("PTRACE_SYSCALL_INFO_SECCOMP END: %llu", nr)
-        if (ptrace(PTRACE_SYSCALL, child_pid, 0, 0) != 0)
+        if (ptrace_syscall(child_pid, 0) != 0)
         {
-          if (errno)
-          {
-            if (errno == ESRCH)
-            {
-              LOG_DEBUG("Child %d died unexpectedly", child_pid)
-              if (child_pid == initial_pid)
-              {
-                exit(0);
-              }
-              pid_info_map.erase(child_pid);
-              continue;
-            }
-            else
-            {
-              fprintf(stderr, "\nptrace(PTRACE_SYSCALL)\n");
-              return -1;
-            }
-          }
+          return -1;
         }
       }
 
@@ -983,13 +1001,8 @@ int run_tracer(pid_t initial_pid)
       LOG_DEBUG("Child %d stopped by vfork (new child %d)\n", child_pid, new_child_pid)
 #endif
 
-      if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
+      if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
-        fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
-        if (errno != 0)
-        {
-          fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
         return -1;
       }
     }
@@ -1004,13 +1017,8 @@ int run_tracer(pid_t initial_pid)
       }
       LOG_DEBUG("Child %d stopped by fork (new child %d)", child_pid, new_child_pid)
 #endif
-      if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
+      if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
-        fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
-        if (errno != 0)
-        {
-          fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
         return -1;
       }
     }
@@ -1025,26 +1033,16 @@ int run_tracer(pid_t initial_pid)
       }
       LOG_DEBUG("Child %d stopped by clone (new child %d)", child_pid, new_child_pid)
 #endif
-      if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
+      if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
-        fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
-        if (errno != 0)
-        {
-          fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
         return -1;
       }
     }
     else if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)))
     {
       LOG_DEBUG("Child %d stopped by exec", child_pid)
-      if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
+      if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
-        fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
-        if (errno != 0)
-        {
-          fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
         return -1;
       }
     }
@@ -1060,39 +1058,24 @@ int run_tracer(pid_t initial_pid)
       }
       LOG_DEBUG("Child %d exited with code %lu", child_pid, traceeStatus)
 #endif
-      if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
+      if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
-        fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
-        if (errno != 0)
-        {
-          fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
         return -1;
       }
     }
     else if (WIFSTOPPED(status) && !(WSTOPSIG(status) & 0x80))
     {
       LOG_DEBUG("Child %d. stopped with signal %d", child_pid, WSTOPSIG(status))
-      if (ptrace(PTRACE_SYSCALL, child_pid, 0, WSTOPSIG(status)) == -1)
+      if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
-        fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
-        if (errno != 0)
-        {
-          fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
         return -1;
       }
     }
     else
     {
       LOG_DEBUG("Child %d. unexpected stop. status: %d", child_pid, status)
-      if (ptrace(PTRACE_SYSCALL, child_pid, NULL, NULL) == -1)
+      if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
-        fprintf(stderr, "\nchild %d ptrace(PTRACE_SYSCALL)\n", child_pid);
-        if (errno != 0)
-        {
-          fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
         return -1;
       }
     }
