@@ -347,10 +347,30 @@ int ptrace_syscall(pid_t child_pid, int status)
   return 0;
 }
 
+int read_cmdline(pid_t pid, char *cmdline)
+{
+  char cmdline_path[PATH_MAX];
+  sprintf(cmdline_path, "/proc/%d/cmdline", pid);
+  FILE *cmdline_file = fopen(cmdline_path, "r");
+  if (cmdline_file == NULL)
+  {
+    perror("fopen");
+    return -1;
+  }
+  fread(cmdline, 1, PATH_MAX, cmdline_file);
+  fclose(cmdline_file);
+  return 0;
+}
+
 int run_tracer(pid_t child_pid)
 {
   initial_pid = child_pid;
   LOG_DEBUG("Tracing pid %d", child_pid)
+#if DEBUG
+  char cmdline_buf[PATH_MAX];
+  read_cmdline(child_pid, cmdline_buf);
+  LOG_DEBUG("pid: %d, cmdline: %s", child_pid, cmdline_buf)
+#endif
   int status = 0;
   LOG_DEBUG("wait for child to stop after TRACEME %d", child_pid)
   do
@@ -998,6 +1018,9 @@ int run_tracer(pid_t child_pid)
         return -1;
       }
       LOG_DEBUG("Child %d stopped by vfork (new child %d)\n", child_pid, new_child_pid)
+      char cmdline_buf[PATH_MAX];
+      read_cmdline(new_child_pid, cmdline_buf);
+      LOG_DEBUG("new_child_pid: %d, cmdline: %s", new_child_pid, cmdline_buf)
 #endif
 
       if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
@@ -1015,6 +1038,9 @@ int run_tracer(pid_t child_pid)
         return -1;
       }
       LOG_DEBUG("Child %d stopped by fork (new child %d)", child_pid, new_child_pid)
+      char cmdline_buf[PATH_MAX];
+      read_cmdline(new_child_pid, cmdline_buf);
+      LOG_DEBUG("new_child_pid: %d, cmdline: %s", new_child_pid, cmdline_buf)
 #endif
       if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
@@ -1031,6 +1057,9 @@ int run_tracer(pid_t child_pid)
         return -1;
       }
       LOG_DEBUG("Child %d stopped by clone (new child %d)", child_pid, new_child_pid)
+      char cmdline_buf[PATH_MAX];
+      read_cmdline(new_child_pid, cmdline_buf);
+      LOG_DEBUG("new_child_pid: %d, cmdline: %s", new_child_pid, cmdline_buf)
 #endif
       if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
@@ -1039,7 +1068,12 @@ int run_tracer(pid_t child_pid)
     }
     else if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)))
     {
+#if DEBUG
       LOG_DEBUG("Child %d stopped by exec", child_pid)
+      char cmdline_buf[PATH_MAX];
+      read_cmdline(child_pid, cmdline_buf);
+      LOG_DEBUG("child_pid: %d, cmdline: %s", child_pid, cmdline_buf)
+#endif
       if (ptrace_syscall(child_pid, WSTOPSIG(status) != 0))
       {
         return -1;
