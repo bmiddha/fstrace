@@ -1129,7 +1129,10 @@ int trace_exec(char *program, char **args)
   }
   else if (child_pid > 0)
   {
-    run_tracer(child_pid);
+    if (run_tracer(child_pid) != 0)
+    {
+      return 1;
+    }
   }
   else
   {
