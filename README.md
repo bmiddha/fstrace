@@ -52,6 +52,5 @@ build/fstrace bash -c 'echo "foo" >> /tmp/foo' 3>&1
 ```bash
 cmake -S. -B ./build -DCMAKE_BUILD_TYPE=Debug
 cmake --build ./build --target all
-cmake --build ./build --target test
 build/fstrace-debug bash -c 'echo "foo" >> /tmp/foo' 3>&1
 ```
