@@ -220,6 +220,7 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, __u64 addr, char *buffe
   {
     // LOG_DEBUG("trim ./: %s", buffer)
     memmove(buffer, buffer + 2, strlen(buffer) - 2);
+    buffer[strlen(buffer) - 2] = '\0';
   }
 
   // LOG_DEBUG("buffer: %s", buffer)
@@ -257,24 +258,16 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, __u64 addr, char *buffe
 void parse_dirfd_pathname_from_tracee(pid_t pid, __u64 dirfd, __u64 pathname, char *fullpath, size_t fullpath_size)
 {
   char path[PATH_MAX];
-  if ((int)dirfd == AT_FDCWD)
+  read_cstring_from_tracee(pid, pathname, path, PATH_MAX);
+  if (path[0] == '/')
   {
-    // LOG_DEBUG("AT_FDCWD")
-    read_maybe_relative_pathname_from_tracee(pid, pathname, fullpath, PATH_MAX);
+    sprintf(fullpath, "%s", path);
   }
   else
   {
-    read_cstring_from_tracee(pid, pathname, path, PATH_MAX);
-    if (path[0] == '/')
-    {
-      sprintf(fullpath, "%s", path);
-    }
-    else
-    {
-      char dirpath[PATH_MAX];
-      get_fd_path(pid, dirfd, dirpath);
-      sprintf(fullpath, "%s/%s", dirpath, path);
-    }
+    char dirpath[PATH_MAX];
+    get_fd_path(pid, dirfd, dirpath);
+    sprintf(fullpath, "%s/%s", dirpath, path);
   }
 }
 
@@ -480,9 +473,7 @@ int run_tracer(pid_t child_pid)
         case __NR_execve:
         {
           read_cstring_from_tracee(child_pid, arg0, fs_op[*fs_op_idx].path, PATH_MAX);
-#if DEBUG
           sprintf(fs_op[*fs_op_idx].comment, "execve");
-#endif
           fs_op[*fs_op_idx].op[0] = 'R';
           fs_op[*fs_op_idx].file_type = '?';
           (*fs_op_idx)++;
@@ -561,7 +552,17 @@ int run_tracer(pid_t child_pid)
         // int openat2(int dirfd, const char *pathname, struct open_how *how, size_t size);
         case __NR_openat2:
         {
-          parse_dirfd_pathname_from_tracee(child_pid, arg0, arg1, fs_op[*fs_op_idx].path, PATH_MAX);
+          char path[PATH_MAX];
+          if ((int)arg0 == AT_FDCWD)
+          {
+            // LOG_DEBUG("AT_FDCWD")
+            read_maybe_relative_pathname_from_tracee(child_pid, arg1, fs_op[*fs_op_idx].path, PATH_MAX);
+          }
+          else
+          {
+            parse_dirfd_pathname_from_tracee(child_pid, arg0, arg1, fs_op[*fs_op_idx].path, PATH_MAX);
+          }
+
           struct open_how *how = (struct open_how *)malloc(sizeof(struct open_how));
           read_struct_from_tracee(child_pid, arg2, how, sizeof(struct open_how));
           if (how->flags & O_RDONLY)
@@ -998,7 +999,8 @@ int run_tracer(pid_t child_pid)
             dprintf(3, "%c%c %s\n", (fs_op[i]).op[0], file_type, (fs_op[i]).path);
           }
 #else
-          dprintf(3, "%c%c %s\n", (fs_op[i]).op[0], file_type, (fs_op[i]).path);
+          dprintf(3, "# %s\n%c%c %s\n", (fs_op[i]).comment, (fs_op[i]).op[0], file_type, (fs_op[i]).path);
+          // dprintf(3, "BEGIN%c%c %sEND\n", (fs_op[i]).op[0], file_type, (fs_op[i]).path);
 #endif
         }
         // LOG_DEBUG("PTRACE_SYSCALL_INFO_EXIT END: %llu. rVal: %ld, isError: %ld", thread_op->nr, rVal, isError)
