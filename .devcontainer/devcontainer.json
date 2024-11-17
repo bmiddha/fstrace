@@ -1,5 +1,6 @@
 {
 	"image": "mcr.microsoft.com/devcontainers/go:1-1.23-bookworm",
+	"privileged": true,
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
 			"nodeGypDependencies": true,
@@ -8,10 +9,12 @@
 			"nvmVersion": "latest"
 		}
 	},
+	"onCreateCommand": "bash .devcontainer/scripts/on_create.sh",
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"golang.go"
+				"golang.go",
+				"GitHub.copilot"
 			]
 		}
 	}
