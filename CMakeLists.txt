@@ -16,7 +16,7 @@ else()
   add_compile_options(-Ofast)
 endif()
 
-add_compile_options(-Wall -Wextra -Wpedantic)
+add_compile_options(-Wall -Wextra -Wpedantic -Wimplicit-fallthrough)
 
 # Build fstrace
 add_executable(fstrace src/fstrace.cc)
