@@ -63,14 +63,19 @@ struct sys_exit_execve_format
     long ret;
 };
 
+#define MAX_ARGS 8
+#define MAX_ARG_LEN 50
+#define MAX_ENVS 8
+#define MAX_ENV_LEN 50
+
 struct event
 {
     int pid;            // 4 bytes
     int ppid;           // 4 bytes
     int uid;            // 4 bytes
     char filename[500]; // 500 bytes
-    char envp[8][50];   // 400 bytes
-    char argv[8][50];   // 400 bytes
+    char envp[MAX_ENVS][MAX_ENV_LEN];
+    char argv[MAX_ARGS][MAX_ARG_LEN];
 };
 // This event ring buffer is read by userspace program
 struct
@@ -79,10 +84,25 @@ struct
     __uint(max_entries, 256 * 1024);
 } events SEC(".maps");
 
+struct
+{
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, int);
+    __type(value, bool);
+    __uint(max_entries, 1024);   
+} cgroups_to_monitor SEC(".maps");
+
 
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tracepoint_syscalls_sys_enter_execve(struct sys_enter_execve_format *ctx)
 {
+    // u64 cgroup_id = bpf_get_current_cgroup_id();
+    // int *val = bpf_map_lookup_elem(&cgroups_to_monitor, &cgroup_id);
+    // if (val == NULL || *val != true)
+    // {
+    //     return 0;
+    // }
+
     u64 id;
     pid_t pid, tgid, ppid;
     struct task_struct *task;
@@ -102,9 +122,14 @@ int tracepoint_syscalls_sys_enter_execve(struct sys_enter_execve_format *ctx)
     event->uid = uid;
     event->ppid = ppid;
     bpf_probe_read_user_str(&event->filename, sizeof(event->filename), ctx->filename);
-    for (int i = 0; i < sizeof(ctx->argv); i++)
+    int i;
+    char *tmp;
+    for (i = 0; i < sizeof(ctx->argv); i++)
     {
-        char *tmp;
+        if (i > MAX_ARGS)
+        {
+            break;
+        }
         bpf_probe_read(&tmp, sizeof(tmp), &ctx->argv[i]);
         if (tmp == NULL)
         {
@@ -112,9 +137,16 @@ int tracepoint_syscalls_sys_enter_execve(struct sys_enter_execve_format *ctx)
         }
         bpf_probe_read_str(&event->argv[i], sizeof(event->argv[i]), tmp);
     }
-    for (int i = 0; i < sizeof(ctx->envp); i++)
+    if (i < MAX_ARGS)
     {
-        char *tmp;
+        event->argv[i][0] = '\0';
+    }
+    for (i = 0; i < sizeof(ctx->envp); i++)
+    {
+        if (i > MAX_ENVS)
+        {
+            break;
+        }
         bpf_probe_read(&tmp, sizeof(tmp), &ctx->envp[i]);
         if (tmp == NULL)
         {
@@ -122,9 +154,19 @@ int tracepoint_syscalls_sys_enter_execve(struct sys_enter_execve_format *ctx)
         }
         bpf_probe_read_str(&event->envp[i], sizeof(event->envp[i]), tmp);
     }
+    if (i < MAX_ENVS)
+    {
+        event->envp[i][0] = '\0';
+    }
     bpf_ringbuf_submit(event, 0);
 
     return 0;
 }
+
+// SEC("tracepoint/syscalls/sys_exit_execve")
+// int tracepoint_syscalls_sys_exit_execve(struct sys_exit_execve_format *ctx)
+// {
+//     return 0;
+// }
 
 char LICENSE[] SEC("license") = "Dual MIT/GPL";
