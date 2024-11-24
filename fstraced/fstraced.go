@@ -82,7 +82,7 @@ func server() {
 	}
 }
 
-func initBpfProgram() {
+func initExecveProgram() {
 	// Remove resource limits for kernels <5.11.
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Fatal("Removing memlock:", err)
@@ -103,12 +103,12 @@ func initBpfProgram() {
 	}
 	defer link.Close()
 
-	go handleRingBuffer(ctx, objs.Events)
+	go handleRingBufferExecve(ctx, objs.Events)
 
 	<-ctx.Done()
 }
 
-func handleRingBuffer(ctx context.Context, events *ebpf.Map) {
+func handleRingBufferExecve(ctx context.Context, events *ebpf.Map) {
 	eventReader, err := ringbuf.NewReader(events)
 	if err != nil {
 		log.Fatal("Creating ring buffer reader:", err)
@@ -164,7 +164,80 @@ func handleRingBuffer(ctx context.Context, events *ebpf.Map) {
 	}
 }
 
+func handleRingBufferVfs(ctx context.Context, events *ebpf.Map) {
+	eventReader, err := ringbuf.NewReader(events)
+	if err != nil {
+		log.Fatal("Creating ring buffer reader:", err)
+	}
+	log.Println("Listening for events")
+	go func() {
+		<-ctx.Done()
+		eventReader.Close()
+	}()
+
+	var ev struct {
+		Pid      uint64
+		Filename [4096]byte
+	}
+
+	for {
+		event, err := eventReader.Read()
+		if err != nil {
+			if errors.Is(err, ringbuf.ErrClosed) {
+				log.Println("Received signal, exiting..")
+				return
+			}
+			log.Printf("reading from reader: %s", err)
+			continue
+		}
+
+		if err := binary.Read(bytes.NewBuffer(event.RawSample), binary.LittleEndian, &ev); err != nil {
+			log.Printf("binary.Read: %s", err)
+			continue
+		}
+
+		// command := string(ev.Filename[:bytes.IndexByte(ev.Filename[:], 0)])
+		// log.Printf("PID: %d PPID: %d UID: %d COMM: %s ARGV: %s ENVP: %s\n", ev.Pid, ev.Ppid, ev.Uid, command, argv_str, envp_str)
+		filename := string(ev.Filename[:bytes.IndexByte(ev.Filename[:], 0)])
+		// print argv
+		log.Printf("PID: %d: %s\n", ev.Pid, filename)
+	}
+}
+
+func initVfsProgram() {
+	// Remove resource limits for kernels <5.11.
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatal("Removing memlock:", err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var objs vfsObjects
+	if err := loadVfsObjects(&objs, nil); err != nil {
+		// log.Fatal("Loading eBPF objects:", err)
+		var verr *ebpf.VerifierError
+		if errors.As(err, &verr) {
+			fmt.Printf("%+v\n", verr)
+		}
+	}
+	defer objs.Close()
+
+	link, err := link.AttachTracing(link.TracingOptions{
+		Program: objs.vfsPrograms.Prog,
+	})
+	if err != nil {
+		log.Fatal("link error", err)
+	}
+	defer link.Close()
+
+	go handleRingBufferVfs(ctx, objs.EventRingbuf)
+
+	<-ctx.Done()
+}
+
 func main() {
-	// go server()
-	initBpfProgram()
+	go server()
+	// initExecveProgram()
+	initVfsProgram()
 }

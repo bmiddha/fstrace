@@ -10,6 +10,7 @@
 		}
 	},
 	"onCreateCommand": "bash .devcontainer/scripts/on_create.sh",
+	"postStartCommand": "bash .devcontainer/scripts/post_start.sh",
 	"customizations": {
 		"vscode": {
 			"extensions": [

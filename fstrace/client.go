@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 )
 
 func client() {
@@ -15,8 +16,8 @@ func client() {
 	}
 	defer conn.Close()
 
-	// Send a message
-	_, err = conn.Write([]byte("Hello from client!\n"))
+	// Send a message with pid
+	_, err = conn.Write([]byte("PID: " + fmt.Sprint(os.Getpid()) + "\n"))
 	if err != nil {
 		fmt.Println("write error:", err)
 		return
@@ -31,4 +32,6 @@ func client() {
 	}
 
 	fmt.Printf("Received message: %s\n", string(buf[:n]))
+
+	exec.Command("ls", "-l").Run()
 }

@@ -2,6 +2,8 @@
   "files.associations": {
     "bpf_helpers.h": "c",
     "bpf.h": "c",
-    "bpf_core_read.h": "c"
+    "bpf_core_read.h": "c",
+    "bpf_helper_defs.h": "c",
+    "typeinfo": "c"
   }
 }
