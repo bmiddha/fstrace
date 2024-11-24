@@ -160,11 +160,11 @@ func handleRingBuffer(ctx context.Context, events *ebpf.Map) {
 		// log.Printf("PID: %d PPID: %d UID: %d COMM: %s ARGV: %s ENVP: %s\n", ev.Pid, ev.Ppid, ev.Uid, command, argv_str, envp_str)
 
 		// print argv
-		// log.Printf("PID: %d: %s\n", ev.Pid, argv_str)
+		log.Printf("PID: %d: %s\n", ev.Pid, argv_str)
 	}
 }
 
 func main() {
-	go server()
+	// go server()
 	initBpfProgram()
 }
