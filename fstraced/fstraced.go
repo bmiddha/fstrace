@@ -236,8 +236,41 @@ func initVfsProgram() {
 	<-ctx.Done()
 }
 
+func initLsmProgram() {
+	// Remove resource limits for kernels <5.11.
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatal("Removing memlock:", err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var objs lsmObjects
+	if err := loadLsmObjects(&objs, nil); err != nil {
+		// log.Fatal("Loading eBPF objects:", err)
+		var verr *ebpf.VerifierError
+		if errors.As(err, &verr) {
+			fmt.Printf("%+v\n", verr)
+		}
+	}
+	defer objs.Close()
+
+	link, err := link.AttachLSM(link.LSMOptions{
+		Program: objs.lsmPrograms.Prog,
+	})
+	if err != nil {
+		log.Fatal("link error", err)
+	}
+	defer link.Close()
+
+	// go handleRingBufferVfs(ctx, objs.lsmMaps)
+
+	<-ctx.Done()
+}
+
 func main() {
-	go server()
+	// go server()
+	initLsmProgram()
 	// initExecveProgram()
-	initVfsProgram()
+	// initVfsProgram()
 }

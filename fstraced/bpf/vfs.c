@@ -1,4 +1,3 @@
-
 // clang-format off
 //go:build ignore
 // clang-format on
@@ -23,10 +22,28 @@ struct event_value
   char filename[PATH_MAX];
 };
 
-SEC("fentry/do_unlinkat")
-int BPF_PROG(prog, int dfd, struct filename *name)
+SEC("fentry/security_file_open")
+int BPF_PROG(prog, struct file *file, int ret)
 {
-  
+  pid_t pid;
+  u64 pid_tgid = bpf_get_current_pid_tgid();
+  pid = pid_tgid >> 32;
+
+  struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
+  struct event_value *event = bpf_ringbuf_reserve(&event_ringbuf, sizeof(struct event_value), 0);
+  if (!event)
+  {
+    return 0;
+  }
+
+  event->pid = pid;
+  uint filename_len = 0;
+
+  bpf_d_path(&file->f_path, event->filename, PATH_MAX);
+ 
+  bpf_ringbuf_submit(event, 0);
+  return 0;
 }
 
 char LICENSE[] SEC("license") = "Dual MIT/GPL";
