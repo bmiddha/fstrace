@@ -61,6 +61,47 @@ struct ptrace_syscall_info
   };
 };
 
+void normalize_path(char *fullpath)
+{
+  char *cursor = fullpath;
+  char *cursor_end = fullpath + strlen(fullpath);
+  char *output_cursor = fullpath;
+
+  while (cursor < cursor_end)
+  {
+    if (cursor[0] == '/' && cursor[1] == '/')
+    {
+      // Skip consecutive slashes
+      cursor++;
+    }
+    else if (cursor[0] == '/' && cursor[1] == '.' && cursor[2] == '/')
+    {
+      // Skip "/./"
+      cursor += 2;
+    }
+    else if (cursor[0] == '/' && cursor[1] == '.' && cursor[2] == '.' && cursor[3] == '/')
+    {
+      // Handle "/../" by moving back one directory
+      cursor += 3;
+      if (output_cursor > fullpath)
+      {
+        output_cursor--;
+        while (output_cursor > fullpath && *output_cursor != '/')
+        {
+          output_cursor--;
+        }
+      }
+    }
+    else
+    {
+      // Copy the current character to the output
+      *output_cursor++ = *cursor++;
+    }
+  }
+  // Null-terminate the resulting string
+  *output_cursor = '\0';
+}
+
 extern char **environ;
 
 int run_tracee(char *program, char **args)
@@ -268,8 +309,73 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, char *cwd, __u64 addr, 
       {
         snprintf(temp_buffer, PATH_MAX, "%s/%s", cwd, buffer);
       }
+      normalize_path(temp_buffer);
       strncpy(buffer, temp_buffer, buffer_size);
     }
+  }
+}
+
+void join_path(const char *path1, const char *path2, char *fullpath, size_t fullpath_size)
+{
+  char *path1_segments[PATH_MAX];
+  char *path2_segments[PATH_MAX];
+  char *fullpath_segments[PATH_MAX];
+  int path1_segment_count = 0;
+  int path2_segment_count = 0;
+  int fullpath_segment_count = 0;
+
+  char *token = strtok((char *)path1, "/");
+  while (token != NULL)
+  {
+    path1_segments[path1_segment_count++] = token;
+    token = strtok(NULL, "/");
+  }
+
+  token = strtok((char *)path2, "/");
+  while (token != NULL)
+  {
+    path2_segments[path2_segment_count++] = token;
+    token = strtok(NULL, "/");
+  }
+
+  for (int i = 0; i < path1_segment_count; i++)
+  {
+    if (strcmp(path1_segments[i], "..") == 0)
+    {
+      if (fullpath_segment_count > 0)
+      {
+        fullpath_segment_count--;
+      }
+    }
+    else if (strcmp(path1_segments[i], ".") != 0)
+    {
+      fullpath_segments[fullpath_segment_count++] = path1_segments[i];
+    }
+  }
+
+  for (int i = 0; i < path2_segment_count; i++)
+  {
+    if (strcmp(path2_segments[i], "..") == 0)
+    {
+      if (fullpath_segment_count > 0)
+      {
+        fullpath_segment_count--;
+      }
+    }
+    else if (strcmp(path2_segments[i], ".") != 0)
+    {
+      fullpath_segments[fullpath_segment_count++] = path2_segments[i];
+    }
+  }
+
+  fullpath[0] = '\0';
+  for (int i = 0; i < fullpath_segment_count; i++)
+  {
+    if (i > 0)
+    {
+      strncat(fullpath, "/", fullpath_size);
+    }
+    strncat(fullpath, fullpath_segments[i], fullpath_size);
   }
 }
 
@@ -295,6 +401,7 @@ void parse_dirfd_pathname_from_tracee(pid_t pid, __u64 dirfd, __u64 pathname, ch
     {
       snprintf(fullpath, fullpath_size, "%s/%s", dirpath, path);
     }
+    normalize_path(fullpath);
   }
   // LOG_DEBUG("fullpath: %s", fullpath)
 }
@@ -832,10 +939,10 @@ int run_tracer(pid_t child_pid)
   dprintf(3, "# %s (time_spent_usec: %ld)\n%c%c %s\n", #comment, time_spent_usec, access_type, file_type, path);       \
   LOG_DEBUG("# %s (time_spent_usec: %ld)", #comment, time_spent_usec)                                                  \
   LOG_DEBUG("%c%c %s", access_type, file_type, path)
-// #else
-// #define LOG_ACCESS(comment, access_type, file_type, path) \
+        // #else
+        // #define LOG_ACCESS(comment, access_type, file_type, path) \
 //   dprintf(3, "%c%c %s\n", access_type, file_type, path);
-// #endif
+        // #endif
 
 #define FILTER_PATH(path)                                                                                              \
   if (strncmp(path, "/proc/", 6) == 0 || strncmp(path, "/dev/", 5) == 0 || strncmp(path, "pipe:[", 6) == 0)            \
