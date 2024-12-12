@@ -920,7 +920,11 @@ int run_tracer(pid_t child_pid)
 
           if (access_type == 'R' && isError != 0)
           {
-            if (rVal == -ENOENT || rVal == -ENOTDIR || rVal == -EBADF)
+            if (rVal == -EISDIR)
+            {
+              file_type = 'D';
+            }
+            else if (rVal == -ENOENT || rVal == -ENOTDIR || rVal == -EBADF)
             {
               file_type = 'X';
             }
