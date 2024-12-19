@@ -961,7 +961,15 @@ int run_tracer(pid_t child_pid)
           access_type = (flags & O_WRONLY || flags & O_RDWR) ? 'W' : 'R';
           file_type = (flags & O_DIRECTORY) ? 'D' : 'F';
 
-          if (access_type == 'R' && isError != 0)
+          if (file_type = 'F' && access_type == 'R' && isError != 0)
+          {
+            int pathLen = strlen(path);
+            if (pathLen > 0 && path[pathLen - 1] == '/')
+            {
+              file_type = 'D';
+            }
+          }
+          else if (access_type == 'R' && isError != 0)
           {
             if (rVal == -EISDIR)
             {
