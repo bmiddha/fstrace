@@ -5,13 +5,15 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
+// int openat2(int dirfd, const char *pathname, const struct open_how *how, size_t size);
+
 int main()
 {
   int dirfd = AT_FDCWD;
   const char *pathname = "/tmp";
   struct open_how how = {.flags = O_PATH, .mode = 0};
   int size = sizeof(struct open_how);
-  int fd = syscall(SYS_openat2, dirfd, pathname, &how, size);
+  syscall(SYS_openat2, dirfd, pathname, &how, size);
 
   return 0;
 }

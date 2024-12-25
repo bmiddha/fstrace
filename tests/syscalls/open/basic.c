@@ -12,7 +12,7 @@ int main()
   const char *pathname = "/tmp";
   int flags = O_RDONLY;
   int mode = 0;
-  int fd = syscall(SYS_open, pathname, flags, mode);
+  syscall(SYS_open, pathname, flags, mode);
 
   return 0;
 }
