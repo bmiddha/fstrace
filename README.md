@@ -1,5 +1,7 @@
 # fstrace
 
+[![Build](https://github.com/bmiddha/fstrace/actions/workflows/ci.yml/badge.svg)](https://github.com/bmiddha/fstrace/actions/workflows/ci.yml)
+
 fstrace uses `ptrace` to check file system accesses of a program.
 
 ```bash
