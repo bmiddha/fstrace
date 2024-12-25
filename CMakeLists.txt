@@ -49,3 +49,37 @@ add_custom_command(
 include(CTest)
 add_test(NAME exit-code-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/exit-code-passthrough.sh)
 add_test(NAME signal-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/signal-passthrough.sh)
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/b514bdc898e2951020cbdca1304b75f5950d1f59.zip # v1.15.2
+)
+
+FetchContent_Declare(
+  approvaltests
+  URL https://github.com/approvals/ApprovalTests.cpp/archive/c7641d18bdd2c027bd619db288ef246ed57bafab.zip # v.10.13.0
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+FetchContent_MakeAvailable(approvaltests)
+
+enable_testing()
+
+add_executable(
+  approval-tests
+  tests/approval-tests/approval-tests.cc
+)
+target_link_libraries(approval-tests ApprovalTests::ApprovalTests GTest::gtest_main)
+
+include(GoogleTest)
+
+gtest_discover_tests(approval-tests)
+
+set(SOURCE_DIR "tests/syscalls")
+file(GLOB SOURCES "${SOURCE_DIR}/**/*.c" "${SOURCE_DIR}/**/*.cpp")
+foreach(SOURCE_FILE ${SOURCES})
+    file(RELATIVE_PATH REL_PATH "${CMAKE_SOURCE_DIR}" "${SOURCE_FILE}")
+    string(REPLACE "/" "_" TARGET_NAME ${REL_PATH})
+    add_executable(${TARGET_NAME} ${SOURCE_FILE})
+endforeach()

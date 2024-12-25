@@ -867,7 +867,7 @@ int run_tracer(pid_t child_pid)
         LOG_DEBUG("Child %d PTRACE_SYSCALL_INFO_EXIT BEGIN: %llu. rVal: %ld, isError: %ld", child_pid, thread_op->nr,
                   rVal, isError)
 
-// #if DEBUG
+#if DEBUG
 #define LOG_ACCESS(comment, access_type, file_type, path)                                                              \
   gettimeofday(&end_time, NULL);                                                                                       \
   time_spent_usec =                                                                                                    \
@@ -875,10 +875,9 @@ int run_tracer(pid_t child_pid)
   dprintf(3, "# %s (time_spent_usec: %ld)\n%c%c %s\n", #comment, time_spent_usec, access_type, file_type, path);       \
   LOG_DEBUG("# %s (time_spent_usec: %ld)", #comment, time_spent_usec)                                                  \
   LOG_DEBUG("%c%c %s", access_type, file_type, path)
-        // #else
-        // #define LOG_ACCESS(comment, access_type, file_type, path) \
-//   dprintf(3, "%c%c %s\n", access_type, file_type, path);
-        // #endif
+#else
+#define LOG_ACCESS(comment, access_type, file_type, path) dprintf(3, "%c%c %s\n", access_type, file_type, path);
+#endif
 
 #define FILTER_PATH(path)                                                                                              \
   if (strncmp(path, "/proc/", 6) == 0 || strncmp(path, "/dev/", 5) == 0 || strncmp(path, "pipe:[", 6) == 0)            \
@@ -965,13 +964,13 @@ int run_tracer(pid_t child_pid)
           {
             // if open flags do not have O_DIRECTORY but path ends in '/' then it is a directory
             if ((flags & O_DIRECTORY) == 0)
-          {
-            int pathLen = strlen(path);
-            if (pathLen > 0 && path[pathLen - 1] == '/')
             {
-              file_type = 'D';
+              int pathLen = strlen(path);
+              if (pathLen > 0 && path[pathLen - 1] == '/')
+              {
+                file_type = 'D';
+              }
             }
-          }
             else if (rVal == -EISDIR)
             {
               file_type = 'D';
