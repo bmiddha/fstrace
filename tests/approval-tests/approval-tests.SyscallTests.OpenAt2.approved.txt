@@ -1,7 +1,8 @@
-RF ./tests_syscalls_openat2_fdcwd.c
+RF ./tests_syscalls_openat2.c
 RX /etc/ld.so.preload
 RF /etc/ld.so.cache
 RF /etc/ld.so.cache
 RF /lib/x86_64-linux-gnu/libc.so.6
 RF /tmp
+RD /tmp/
 

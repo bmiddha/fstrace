@@ -56,15 +56,14 @@ std::string getFsTraceOutput(const char *cmd)
   return result;
 }
 
-TEST(Syscalls, OpenAt2_FDCWD)
+TEST(SyscallTests, OpenAt2)
 {
-  std::string output = getFsTraceOutput("./tests_syscalls_openat2_fdcwd.c");
+  std::string output = getFsTraceOutput("./tests_syscalls_openat2.c");
   ApprovalTests::Approvals::verify(output);
 }
 
-
-TEST(Syscalls, Open)
+TEST(SyscallTests, Open)
 {
-  std::string output = getFsTraceOutput("./tests_syscalls_open_basic.c");
+  std::string output = getFsTraceOutput("./tests_syscalls_open.c");
   ApprovalTests::Approvals::verify(output);
 }

@@ -6,7 +6,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/fstrace-debug",
-      "args": ["bash", "${workspaceFolder}/test2/1.sh"],
+      "args": ["${workspaceFolder}/build/tests_syscalls_openat2.c"],
       "stopAtEntry": false,
       "cwd": "${fileDirname}",
       "environment": [],

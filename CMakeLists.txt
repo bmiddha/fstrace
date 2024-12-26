@@ -21,6 +21,9 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wimplicit-fallthrough)
 # Build fstrace
 add_executable(fstrace src/fstrace.cc)
 
+# target_compile_options(fstrace PRIVATE --coverage)
+# target_link_options(fstrace PRIVATE --coverage)
+
 set(DEBUG_FD 1)
 target_compile_definitions(fstrace PRIVATE DEBUGFD=${DEBUG_FD})
 
@@ -77,7 +80,7 @@ include(GoogleTest)
 gtest_discover_tests(approval-tests)
 
 set(SOURCE_DIR "tests/syscalls")
-file(GLOB SOURCES "${SOURCE_DIR}/**/*.c" "${SOURCE_DIR}/**/*.cpp")
+file(GLOB SOURCES "${SOURCE_DIR}/*.c" "${SOURCE_DIR}/*.cpp")
 foreach(SOURCE_FILE ${SOURCES})
     file(RELATIVE_PATH REL_PATH "${CMAKE_SOURCE_DIR}" "${SOURCE_FILE}")
     string(REPLACE "/" "_" TARGET_NAME ${REL_PATH})
