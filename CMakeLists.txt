@@ -21,9 +21,6 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wimplicit-fallthrough)
 # Build fstrace
 add_executable(fstrace src/fstrace.cc)
 
-# target_compile_options(fstrace PRIVATE --coverage)
-# target_link_options(fstrace PRIVATE --coverage)
-
 set(DEBUG_FD 1)
 target_compile_definitions(fstrace PRIVATE DEBUGFD=${DEBUG_FD})
 
@@ -59,30 +56,21 @@ FetchContent_Declare(
   URL https://github.com/google/googletest/archive/b514bdc898e2951020cbdca1304b75f5950d1f59.zip # v1.15.2
 )
 
-FetchContent_Declare(
-  approvaltests
-  URL https://github.com/approvals/ApprovalTests.cpp/archive/c7641d18bdd2c027bd619db288ef246ed57bafab.zip # v.10.13.0
-)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
-FetchContent_MakeAvailable(approvaltests)
 
 enable_testing()
 
 add_executable(
-  approval-tests
-  tests/approval-tests/approval-tests.cc
+  syscall-tests
+  tests/syscalls.cc
 )
-target_link_libraries(approval-tests ApprovalTests::ApprovalTests GTest::gtest_main)
+target_link_libraries(syscall-tests GTest::gtest_main)
 
 include(GoogleTest)
 
-gtest_discover_tests(approval-tests)
+target_include_directories(syscall-tests PUBLIC "${PROJECT_SOURCE_DIR}")
+target_compile_options(syscall-tests PRIVATE --coverage)
+target_link_options(syscall-tests PRIVATE --coverage)
 
-set(SOURCE_DIR "tests/syscalls")
-file(GLOB SOURCES "${SOURCE_DIR}/*.c" "${SOURCE_DIR}/*.cpp")
-foreach(SOURCE_FILE ${SOURCES})
-    file(RELATIVE_PATH REL_PATH "${CMAKE_SOURCE_DIR}" "${SOURCE_FILE}")
-    string(REPLACE "/" "_" TARGET_NAME ${REL_PATH})
-    add_executable(${TARGET_NAME} ${SOURCE_FILE})
-endforeach()
+gtest_discover_tests(syscall-tests)

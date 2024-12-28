@@ -6,7 +6,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/fstrace-debug",
-      "args": ["${workspaceFolder}/build/tests_syscalls_openat2.c"],
+      "args": ["/usr/bin/cat", "${workspaceFolder}/README.md"],
       "stopAtEntry": false,
       "cwd": "${fileDirname}",
       "environment": [],
@@ -23,8 +23,7 @@
           "text": "-gdb-set disassembly-flavor intel",
           "ignoreFailures": true
         }
-      ],
-      "preLaunchTask": "CMake: clean rebuild"
+      ]
     },
     {
       "name": "(gdb) Attach",

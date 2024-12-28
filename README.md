@@ -41,7 +41,6 @@ npm i -g fstrace
 Prerequisites
 
 - [CMake](https://cmake.org/)
-- [Node.js](https://nodejs.org/) - Need node.h to build node addon
 
 
 ```bash
