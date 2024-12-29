@@ -21,7 +21,7 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wimplicit-fallthrough)
 # Build fstrace
 add_executable(fstrace src/fstrace.cc)
 
-set(DEBUG_FD 1)
+set(DEBUG_FD 4)
 target_compile_definitions(fstrace PRIVATE DEBUGFD=${DEBUG_FD})
 
 set_target_properties(fstrace PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})

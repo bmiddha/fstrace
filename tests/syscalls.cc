@@ -8,6 +8,18 @@
 #include <dirent.h>
 #include "src/trace_exec.cc"
 
+bool SubstringCountPredicate(const std::string &str, const std::string &substr, int expected_count)
+{
+  int count = 0;
+  size_t pos = str.find(substr);
+  while (pos != std::string::npos)
+  {
+    ++count;
+    pos = str.find(substr, pos + substr.length());
+  }
+  return count == expected_count;
+}
+
 template <typename... Args> std::string trace_testfn(void (*testfn)(Args...), Args... args)
 {
   int pipefd[2];
@@ -106,6 +118,7 @@ char *path_file4_rel = "./file4";
 char *path_file5 = "/tmp/fstrace-test-dir/file5";
 char *path_file5_rel = "./file5";
 char *path_file6 = "/tmp/fstrace-test-dir/file6";
+char *path_file7 = "/tmp/fstrace-test-dir/file7";
 char *path_file6_rel = "./file6";
 char *path_file7_rel = "./file7";
 char *path_newfile0 = "/tmp/fstrace-test-dir/newfile0";
@@ -555,7 +568,7 @@ TEST(SyscallTestSuite, Statx)
                "RD /tmp/fstrace-test-dir/dir0/\n"
                "RD /tmp/fstrace-test-dir/dir0\n"
 
-    );
+  );
 }
 
 void testfn_exec1()
@@ -1279,8 +1292,109 @@ TEST(SyscallTestSuite, Truncate)
   setup();
   std::string output = trace_testfn(testfn_truncate);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(), "WF /tmp/fstrace-test-dir/file0\n"
-                                       "WF /tmp/fstrace-test-dir/file1\n"
+  EXPECT_STREQ(trimmed_output.c_str(),
+
+               "WF /tmp/fstrace-test-dir/file0\n"
+               "WF /tmp/fstrace-test-dir/file1\n"
 
   );
+}
+
+void testfn_child_process_fork()
+{
+  pid_t pid1 = syscall(__NR_fork);
+  if (pid1 == 0)
+  {
+    pid_t pid2 = syscall(__NR_fork);
+    if (pid2 == 0)
+    {
+      pid_t pid3 = syscall(__NR_fork);
+      if (pid3 == 0)
+      {
+        syscall(__NR_truncate, path_file0, 0);
+        syscall(__NR_exit, EXIT_SUCCESS);
+      }
+      else
+      {
+        syscall(__NR_truncate, path_file1, 0);
+        syscall(__NR_wait4, pid3, NULL, 0, NULL);
+        syscall(__NR_exit, EXIT_SUCCESS);
+      }
+    }
+    else
+    {
+      syscall(__NR_truncate, path_file2, 0);
+      syscall(__NR_wait4, pid2, NULL, 0, NULL);
+      syscall(__NR_exit, EXIT_SUCCESS);
+    }
+  }
+  else
+  {
+    pid_t pid4 = syscall(__NR_fork);
+    if (pid4 == 0)
+    {
+      pid_t pid5 = syscall(__NR_fork);
+      if (pid5 == 0)
+      {
+        syscall(__NR_truncate, path_file3, 0);
+        syscall(__NR_exit, EXIT_SUCCESS);
+      }
+      else
+      {
+        syscall(__NR_truncate, path_file4, 0);
+        syscall(__NR_wait4, pid5, NULL, 0, NULL);
+        syscall(__NR_exit, EXIT_SUCCESS);
+      }
+    }
+    else
+    {
+      pid_t pid6 = syscall(__NR_fork);
+      if (pid6 == 0)
+      {
+        syscall(__NR_truncate, path_file5, 0);
+        syscall(__NR_exit, EXIT_SUCCESS);
+      }
+      else
+      {
+        pid_t pid7 = syscall(__NR_fork);
+        if (pid7 == 0)
+        {
+          syscall(__NR_truncate, path_file6, 0);
+          syscall(__NR_exit, EXIT_SUCCESS);
+        }
+        else
+        {
+          syscall(__NR_truncate, path_file7, 0);
+          syscall(__NR_wait4, pid1, NULL, 0, NULL);
+          syscall(__NR_wait4, pid4, NULL, 0, NULL);
+          syscall(__NR_wait4, pid6, NULL, 0, NULL);
+          syscall(__NR_wait4, pid7, NULL, 0, NULL);
+          syscall(__NR_exit, EXIT_SUCCESS);
+        }
+      }
+    }
+  }
+}
+TEST(SyscallTestSuite, ChildProcessFork)
+{
+  setup();
+  std::string output = trace_testfn(testfn_child_process_fork);
+  std::string trimmed_output = filter_output(output);
+
+  std::string file0_access = "WF /tmp/fstrace-test-dir/file0\n", file1_access = "WF /tmp/fstrace-test-dir/file1\n",
+              file2_access = "WF /tmp/fstrace-test-dir/file2\n", file3_access = "WF /tmp/fstrace-test-dir/file3\n",
+              file4_access = "WF /tmp/fstrace-test-dir/file4\n", file5_access = "WF /tmp/fstrace-test-dir/file5\n",
+              file6_access = "WF /tmp/fstrace-test-dir/file6\n", file7_access = "WF /tmp/fstrace-test-dir/file7\n",
+              newline = "\n";
+
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, file0_access, 1);
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, file1_access, 1);
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, file2_access, 1);
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, file3_access, 1);
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, file4_access, 1);
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, file5_access, 1);
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, file6_access, 1);
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, file7_access, 1);
+
+  EXPECT_PRED3(SubstringCountPredicate, trimmed_output, newline, 8);
 }
