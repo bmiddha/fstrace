@@ -589,10 +589,7 @@ TEST(SyscallTestSuite, Exec1)
                "RF /usr/bin/cat\n"
                "RX /etc/ld.so.preload\n"
                "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
   );
@@ -617,10 +614,7 @@ TEST(SyscallTestSuite, Exec2)
                "RF /usr/bin/cat\n"
                "RX /etc/ld.so.preload\n"
                "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
   );
@@ -647,10 +641,7 @@ TEST(SyscallTestSuite, Exec3)
                "RF /usr/bin/cat\n"
                "RX /etc/ld.so.preload\n"
                "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
   );
@@ -678,10 +669,7 @@ TEST(SyscallTestSuite, Exec4)
                "RF /usr/bin/cat\n"
                "RX /etc/ld.so.preload\n"
                "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
   );
@@ -708,10 +696,7 @@ TEST(SyscallTestSuite, Exec5)
                "RF /usr/bin/cat\n"
                "RX /etc/ld.so.preload\n"
                "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
   );
@@ -739,10 +724,7 @@ TEST(SyscallTestSuite, Exec6)
                "RF /usr/bin/cat\n"
                "RX /etc/ld.so.preload\n"
                "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
   );
