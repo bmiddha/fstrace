@@ -591,7 +591,7 @@ TEST(SyscallTestSuite, Exec1)
                "RF /etc/ld.so.cache\n"
                "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
+               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
                "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
@@ -619,7 +619,7 @@ TEST(SyscallTestSuite, Exec2)
                "RF /etc/ld.so.cache\n"
                "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
+               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
                "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
@@ -649,7 +649,7 @@ TEST(SyscallTestSuite, Exec3)
                "RF /etc/ld.so.cache\n"
                "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
+               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
                "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
@@ -680,7 +680,7 @@ TEST(SyscallTestSuite, Exec4)
                "RF /etc/ld.so.cache\n"
                "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
+               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
                "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
@@ -710,7 +710,7 @@ TEST(SyscallTestSuite, Exec5)
                "RF /etc/ld.so.cache\n"
                "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
+               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
                "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
@@ -741,7 +741,7 @@ TEST(SyscallTestSuite, Exec6)
                "RF /etc/ld.so.cache\n"
                "RF /etc/ld.so.cache\n"
                "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /usr/lib/x86_64-linux-gnu/libc.so.6\n"
+               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
                "RF /tmp/fstrace-test-dir/file0\n"
                "RF /tmp/fstrace-test-dir/file0\n"
 
