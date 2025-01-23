@@ -213,12 +213,13 @@ TEST(SyscallTestSuite, Creat)
   setup();
   std::string output = trace_testfn(testfn_creat);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "WF /tmp/fstrace-test-dir/newfile0\n"
-               "WF /tmp/fstrace-test-dir/newfile1\n"
+      "WF /tmp/fstrace-test-dir/newfile0\n"
+      "WF /tmp/fstrace-test-dir/newfile1\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_open()
@@ -243,15 +244,16 @@ TEST(SyscallTestSuite, Open)
   setup();
   std::string output = trace_testfn(testfn_open);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "WF /tmp/fstrace-test-dir/newfile2\n"
-               "WF /tmp/fstrace-test-dir/newfile3\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RF /tmp/fstrace-test-dir/file2\n"
-               "WF /tmp/fstrace-test-dir/file1\n"
+      "WF /tmp/fstrace-test-dir/newfile2\n"
+      "WF /tmp/fstrace-test-dir/newfile3\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "RF /tmp/fstrace-test-dir/file2\n"
+      "WF /tmp/fstrace-test-dir/file1\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_openat2()
@@ -300,21 +302,22 @@ TEST(SyscallTestSuite, Openat2)
   setup();
   std::string output = trace_testfn(testfn_openat2);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "WF /tmp/fstrace-test-dir/file0\n"
-               "WX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "WX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "WD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "WD /tmp/fstrace-test-dir/dir0\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "RD /tmp/fstrace-test-dir\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "WF /tmp/fstrace-test-dir/file0\n"
+      "WX /tmp/fstrace-test-dir/does-not-exist\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "WX /tmp/fstrace-test-dir/does-not-exist\n"
+      "RD /tmp/fstrace-test-dir/dir0/\n"
+      "WD /tmp/fstrace-test-dir/dir0/\n"
+      "RD /tmp/fstrace-test-dir/dir0/\n"
+      "WD /tmp/fstrace-test-dir/dir0\n"
+      "RD /tmp/fstrace-test-dir/dir0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_openat()
@@ -350,23 +353,24 @@ TEST(SyscallTestSuite, Openat)
   setup();
   std::string output = trace_testfn(testfn_openat);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "WF /tmp/fstrace-test-dir/file0\n"
-               "WX /tmp/fstrace-test-dir/does-not-exist\n"
-               "WX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "WX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "WD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "WD /tmp/fstrace-test-dir/dir0\n"
-               "WD /tmp/fstrace-test-dir/dir0\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "WF /tmp/fstrace-test-dir/file0\n"
+      "WX /tmp/fstrace-test-dir/does-not-exist\n"
+      "WX /tmp/fstrace-test-dir/does-not-exist\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "WX /tmp/fstrace-test-dir/does-not-exist\n"
+      "RD /tmp/fstrace-test-dir/dir0/\n"
+      "WD /tmp/fstrace-test-dir/dir0/\n"
+      "RD /tmp/fstrace-test-dir/dir0/\n"
+      "WD /tmp/fstrace-test-dir/dir0\n"
+      "WD /tmp/fstrace-test-dir/dir0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 void testfn_stat()
 {
@@ -386,14 +390,15 @@ TEST(SyscallTestSuite, Stat)
   setup();
   std::string output = trace_testfn(testfn_stat);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_newfstatat()
@@ -434,31 +439,32 @@ TEST(SyscallTestSuite, Newfstatat)
   setup();
   std::string output = trace_testfn(testfn_newfstatat);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_lstat()
@@ -485,19 +491,20 @@ TEST(SyscallTestSuite, Lstat)
   setup();
   std::string output = trace_testfn(testfn_lstat);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_statx()
@@ -544,31 +551,32 @@ TEST(SyscallTestSuite, Statx)
 
   printf("trimmed_output: %s\n", trimmed_output.c_str());
 
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_exec1()
@@ -584,18 +592,19 @@ TEST(SyscallTestSuite, Exec1)
   setup();
   std::string output = trace_testfn(testfn_exec1);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RF /usr/bin/cat\n"
-               "RX /etc/ld.so.preload\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
+      "RF /usr/bin/cat\n"
+      "RX /etc/ld.so.preload\n"
+      "RF /etc/ld.so.cache\n"
+      "R? /etc/ld.so.cache\n"
+      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
+      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 void testfn_exec2()
 {
@@ -612,18 +621,19 @@ TEST(SyscallTestSuite, Exec2)
   setup();
   std::string output = trace_testfn(testfn_exec2);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RF /usr/bin/cat\n"
-               "RX /etc/ld.so.preload\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
+      "RF /usr/bin/cat\n"
+      "RX /etc/ld.so.preload\n"
+      "RF /etc/ld.so.cache\n"
+      "R? /etc/ld.so.cache\n"
+      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
+      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 void testfn_exec3()
 {
@@ -641,19 +651,20 @@ TEST(SyscallTestSuite, Exec3)
   setup();
   std::string output = trace_testfn(testfn_exec3);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /usr/bin\n"
-               "RF /usr/bin/cat\n"
-               "RX /etc/ld.so.preload\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
+      "RD /usr/bin\n"
+      "RF /usr/bin/cat\n"
+      "RX /etc/ld.so.preload\n"
+      "RF /etc/ld.so.cache\n"
+      "R? /etc/ld.so.cache\n"
+      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
+      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 void testfn_exec4()
 {
@@ -672,19 +683,20 @@ TEST(SyscallTestSuite, Exec4)
   setup();
   std::string output = trace_testfn(testfn_exec4);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /usr/bin\n"
-               "RF /usr/bin/cat\n"
-               "RX /etc/ld.so.preload\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
+      "RD /usr/bin\n"
+      "RF /usr/bin/cat\n"
+      "RX /etc/ld.so.preload\n"
+      "RF /etc/ld.so.cache\n"
+      "R? /etc/ld.so.cache\n"
+      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
+      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 void testfn_exec5()
 {
@@ -702,19 +714,20 @@ TEST(SyscallTestSuite, Exec5)
   setup();
   std::string output = trace_testfn(testfn_exec5);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /usr/bin\n"
-               "RF /usr/bin/cat\n"
-               "RX /etc/ld.so.preload\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
+      "RD /usr/bin\n"
+      "RF /usr/bin/cat\n"
+      "RX /etc/ld.so.preload\n"
+      "RF /etc/ld.so.cache\n"
+      "R? /etc/ld.so.cache\n"
+      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
+      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 void testfn_exec6()
 {
@@ -733,19 +746,20 @@ TEST(SyscallTestSuite, Exec6)
   setup();
   std::string output = trace_testfn(testfn_exec6);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /usr/bin\n"
-               "RF /usr/bin/cat\n"
-               "RX /etc/ld.so.preload\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /etc/ld.so.cache\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RF /tmp/fstrace-test-dir/file0\n"
+      "RD /usr/bin\n"
+      "RF /usr/bin/cat\n"
+      "RX /etc/ld.so.preload\n"
+      "RF /etc/ld.so.cache\n"
+      "R? /etc/ld.so.cache\n"
+      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
+      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_readlink()
@@ -792,35 +806,36 @@ TEST(SyscallTestSuite, Readlink)
   setup();
   std::string output = trace_testfn(testfn_readlink);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "RL /tmp/fstrace-test-dir/file0.link\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
-               "RL /tmp/fstrace-test-dir/dir0.link\n"
+      "RL /tmp/fstrace-test-dir/file0.link\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
+      "RL /tmp/fstrace-test-dir/dir0.link\n"
 
-               "RL /tmp/fstrace-test-dir/file0.link\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
-               "RL /tmp/fstrace-test-dir/dir0.link\n"
+      "RL /tmp/fstrace-test-dir/file0.link\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
+      "RL /tmp/fstrace-test-dir/dir0.link\n"
 
-               "RL /tmp/fstrace-test-dir/file0.link\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
-               "RL /tmp/fstrace-test-dir/dir0.link\n"
+      "RL /tmp/fstrace-test-dir/file0.link\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
+      "RL /tmp/fstrace-test-dir/dir0.link\n"
 
-               "RL /tmp/fstrace-test-dir/file0.link\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
-               "RL /tmp/fstrace-test-dir/dir0.link\n"
+      "RL /tmp/fstrace-test-dir/file0.link\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
+      "RL /tmp/fstrace-test-dir/dir0.link\n"
 
-               "RL /tmp/fstrace-test-dir/file0.link\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
-               "RL /tmp/fstrace-test-dir/dir0.link\n"
+      "RL /tmp/fstrace-test-dir/file0.link\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
+      "RL /tmp/fstrace-test-dir/dir0.link\n"
 
-               "RL /tmp/fstrace-test-dir/file0.link\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
-               "RL /tmp/fstrace-test-dir/dir0.link\n"
+      "RL /tmp/fstrace-test-dir/file0.link\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist.link\n"
+      "RL /tmp/fstrace-test-dir/dir0.link\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_access()
@@ -897,61 +912,62 @@ TEST(SyscallTestSuite, Access)
   std::string output = trace_testfn(testfn_access);
   std::string trimmed_output = filter_output(output);
 
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-               "RF /tmp/fstrace-test-dir/file0\n"
-               "RX /tmp/fstrace-test-dir/does-not-exist\n"
-               "RD /tmp/fstrace-test-dir/dir0/\n"
-               "RD /tmp/fstrace-test-dir/dir0\n"
+      "R? /tmp/fstrace-test-dir/file0\n"
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "R? /tmp/fstrace-test-dir/dir0/\n"
+      "R? /tmp/fstrace-test-dir/dir0\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_unlink()
@@ -1005,14 +1021,15 @@ TEST(SyscallTestSuite, Getdents)
   setup();
   std::string output = trace_testfn(testfn_getdents);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "ED /tmp/fstrace-test-dir\n"
-               "ED /tmp/fstrace-test-dir\n"
+      "ED /tmp/fstrace-test-dir\n"
+      "ED /tmp/fstrace-test-dir\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_rmdir()
@@ -1032,15 +1049,16 @@ TEST(SyscallTestSuite, Rmdir)
   setup();
   std::string output = trace_testfn(testfn_rmdir);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "DX /tmp/fstrace-test-dir/dir0/\n"
-               "DX /tmp/fstrace-test-dir/dir1\n"
+      "DX /tmp/fstrace-test-dir/dir0/\n"
+      "DX /tmp/fstrace-test-dir/dir1\n"
 
-               "DX /tmp/fstrace-test-dir/dir2/\n"
-               "DX /tmp/fstrace-test-dir/dir3\n"
+      "DX /tmp/fstrace-test-dir/dir2/\n"
+      "DX /tmp/fstrace-test-dir/dir3\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_rename()
@@ -1065,26 +1083,27 @@ TEST(SyscallTestSuite, Rename)
   setup();
   std::string output = trace_testfn(testfn_rename);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "DX /tmp/fstrace-test-dir/file0\n"
-               "WF /tmp/fstrace-test-dir/newfile0\n"
-               "DX /tmp/fstrace-test-dir/file1\n"
-               "WF /tmp/fstrace-test-dir/newfile1\n"
+      "DX /tmp/fstrace-test-dir/file0\n"
+      "W? /tmp/fstrace-test-dir/newfile0\n"
+      "DX /tmp/fstrace-test-dir/file1\n"
+      "W? /tmp/fstrace-test-dir/newfile1\n"
 
-               "DX /tmp/fstrace-test-dir/file2\n"
-               "WF /tmp/fstrace-test-dir/newfile2\n"
-               "DX /tmp/fstrace-test-dir/file3\n"
-               "WF /tmp/fstrace-test-dir/newfile3\n"
+      "DX /tmp/fstrace-test-dir/file2\n"
+      "W? /tmp/fstrace-test-dir/newfile2\n"
+      "DX /tmp/fstrace-test-dir/file3\n"
+      "W? /tmp/fstrace-test-dir/newfile3\n"
 
-               "DX /tmp/fstrace-test-dir/file4\n"
-               "WF /tmp/fstrace-test-dir/newfile4\n"
-               "DX /tmp/fstrace-test-dir/file5\n"
-               "WF /tmp/fstrace-test-dir/newfile5\n"
+      "DX /tmp/fstrace-test-dir/file4\n"
+      "W? /tmp/fstrace-test-dir/newfile4\n"
+      "DX /tmp/fstrace-test-dir/file5\n"
+      "W? /tmp/fstrace-test-dir/newfile5\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_mkdir()
@@ -1113,61 +1132,24 @@ TEST(SyscallTestSuite, Mkdir)
   std::string output = trace_testfn(testfn_mkdir);
   std::string trimmed_output = filter_output(output);
 
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "WD /tmp/fstrace-test-dir/newdir0\n"
-               "WD /tmp/fstrace-test-dir/newdir1/\n"
-               "WD /tmp/fstrace-test-dir/newdir2\n"
+      "WD /tmp/fstrace-test-dir/newdir0\n"
+      "WD /tmp/fstrace-test-dir/newdir1/\n"
+      "WD /tmp/fstrace-test-dir/newdir2\n"
 
-               "WD /tmp/fstrace-test-dir/newdir3\n"
-               "WD /tmp/fstrace-test-dir/newdir4/\n"
-               "WD /tmp/fstrace-test-dir/newdir5\n"
+      "WD /tmp/fstrace-test-dir/newdir3\n"
+      "WD /tmp/fstrace-test-dir/newdir4/\n"
+      "WD /tmp/fstrace-test-dir/newdir5\n"
 
-               "WD /tmp/fstrace-test-dir/newdir6\n"
-               "WD /tmp/fstrace-test-dir/newdir7/\n"
-               "WD /tmp/fstrace-test-dir/newdir8\n"
+      "WD /tmp/fstrace-test-dir/newdir6\n"
+      "WD /tmp/fstrace-test-dir/newdir7/\n"
+      "WD /tmp/fstrace-test-dir/newdir8\n"
 
-  );
-}
-
-void testfn_chmod()
-{
-  syscall(__NR_chdir, tempdir);
-  int dirfd = open(tempdir, O_DIRECTORY, 0);
-
-  syscall(__NR_chmod, path_file0, 0777);
-  syscall(__NR_chmod, path_file1_rel, 0777);
-
-  syscall(__NR_fchmodat, AT_FDCWD, path_file2, 0777, 0);
-  syscall(__NR_fchmodat, AT_FDCWD, path_file3_rel, 0777, 0);
-
-  syscall(__NR_fchmodat, dirfd, path_file4, 0777, 0);
-  syscall(__NR_fchmodat, dirfd, path_file5_rel, 0777, 0);
-
-  syscall(__NR_close, dirfd);
-  syscall(__NR_exit, EXIT_SUCCESS);
-}
-TEST(SyscallTestSuite, Chmod)
-{
-  setup();
-  std::string output = trace_testfn(testfn_chmod);
-  std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
-
-               "RD /tmp/fstrace-test-dir\n"
-
-               "WF /tmp/fstrace-test-dir/file0\n"
-               "WF /tmp/fstrace-test-dir/file1\n"
-
-               "WF /tmp/fstrace-test-dir/file2\n"
-               "WF /tmp/fstrace-test-dir/file3\n"
-
-               "WF /tmp/fstrace-test-dir/file4\n"
-               "WF /tmp/fstrace-test-dir/file5\n"
-
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_symlink()
@@ -1192,20 +1174,21 @@ TEST(SyscallTestSuite, Symlink)
   setup();
   std::string output = trace_testfn(testfn_symlink);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "WL /tmp/fstrace-test-dir/newlink0\n"
-               "WL /tmp/fstrace-test-dir/newlink1\n"
-               "WL /tmp/fstrace-test-dir/newlink2\n"
+      "WL /tmp/fstrace-test-dir/newlink0\n"
+      "WL /tmp/fstrace-test-dir/newlink1\n"
+      "WL /tmp/fstrace-test-dir/newlink2\n"
 
-               "WL /tmp/fstrace-test-dir/newlink3\n"
-               "WL /tmp/fstrace-test-dir/newlink4\n"
-               "WL /tmp/fstrace-test-dir/newlink5\n"
-               "WL /tmp/fstrace-test-dir/newlink6\n"
+      "WL /tmp/fstrace-test-dir/newlink3\n"
+      "WL /tmp/fstrace-test-dir/newlink4\n"
+      "WL /tmp/fstrace-test-dir/newlink5\n"
+      "WL /tmp/fstrace-test-dir/newlink6\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_link()
@@ -1233,49 +1216,24 @@ TEST(SyscallTestSuite, Link)
   setup();
   std::string output = trace_testfn(testfn_link);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "RD /tmp/fstrace-test-dir\n"
+      "RD /tmp/fstrace-test-dir\n"
 
-               "WF /tmp/fstrace-test-dir/newfile0\n"
-               "WF /tmp/fstrace-test-dir/newfile1\n"
+      "WF /tmp/fstrace-test-dir/newfile0\n"
+      "WF /tmp/fstrace-test-dir/newfile1\n"
 
-               "WF /tmp/fstrace-test-dir/newfile2\n"
-               "WF /tmp/fstrace-test-dir/newfile3\n"
+      "WF /tmp/fstrace-test-dir/newfile2\n"
+      "WF /tmp/fstrace-test-dir/newfile3\n"
 
-               "WF /tmp/fstrace-test-dir/newfile4\n"
-               "WF /tmp/fstrace-test-dir/newfile5\n"
+      "WF /tmp/fstrace-test-dir/newfile4\n"
+      "WF /tmp/fstrace-test-dir/newfile5\n"
 
-               "WF /tmp/fstrace-test-dir/newfile6\n"
-               "WF /tmp/fstrace-test-dir/newfile7\n"
+      "WF /tmp/fstrace-test-dir/newfile6\n"
+      "WF /tmp/fstrace-test-dir/newfile7\n"
 
-  );
-}
-
-void testfn_utimes()
-{
-  syscall(__NR_chdir, tempdir);
-
-  struct timeval new_times[2];
-  gettimeofday(&new_times[0], NULL);
-  gettimeofday(&new_times[1], NULL);
-
-  syscall(__NR_utimes, path_file0, new_times);
-  syscall(__NR_utimes, path_file1_rel, new_times);
-
-  syscall(__NR_exit, EXIT_SUCCESS);
-}
-TEST(SyscallTestSuite, Utimes)
-{
-  setup();
-  std::string output = trace_testfn(testfn_utimes);
-  std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
-
-               "WF /tmp/fstrace-test-dir/file0\n"
-               "WF /tmp/fstrace-test-dir/file1\n"
-
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_truncate()
@@ -1292,12 +1250,13 @@ TEST(SyscallTestSuite, Truncate)
   setup();
   std::string output = trace_testfn(testfn_truncate);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(trimmed_output.c_str(),
+  EXPECT_STREQ(
 
-               "WF /tmp/fstrace-test-dir/file0\n"
-               "WF /tmp/fstrace-test-dir/file1\n"
+      "WF /tmp/fstrace-test-dir/file0\n"
+      "WF /tmp/fstrace-test-dir/file1\n"
 
-  );
+      ,
+      trimmed_output.c_str());
 }
 
 void testfn_child_process_fork()
