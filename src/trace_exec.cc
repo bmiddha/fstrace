@@ -606,7 +606,7 @@ int run_tracer(pid_t child_pid)
 
 #define PATH_FILTER(path)                                                                                              \
   path[0] == '\0' || path[0] != '/' /* filter pipe:[], socket:[] */ || strncmp(path, "/proc/", 6) == 0 ||              \
-      strncmp(path, "/dev/", 5) == 0
+      strncmp(path, "/dev/", 5) == 0 || strstr(path, "/.pnpm/") != NULL
 
 #define SYS_ENTER_PATH_FITLER(path)                                                                                    \
   if (PATH_FILTER(path))                                                                                               \
