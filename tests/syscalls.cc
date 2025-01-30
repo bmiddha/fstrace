@@ -431,6 +431,9 @@ void testfn_newfstatat()
   syscall(__NR_newfstatat, dirfd, path_dir0_trailing_slash, &statbuf, 0);
   syscall(__NR_newfstatat, dirfd, path_dir0, &statbuf, 0);
 
+  // __NR_newfstatat dirfd - AT_EMPTY_PATH
+  syscall(__NR_newfstatat, dirfd, "", &statbuf, AT_EMPTY_PATH);
+
   syscall(__NR_close, dirfd);
   syscall(__NR_exit, EXIT_SUCCESS);
 }
@@ -534,11 +537,15 @@ void testfn_statx()
   syscall(__NR_statx, AT_FDCWD, path_dir0_trailing_slash_rel, flags, mask, &statxbuf);
   syscall(__NR_statx, AT_FDCWD, path_dir0_rel, flags, mask, &statxbuf);
 
-  // // __NR_statx AT_FDCWD absolute path
+  // __NR_statx AT_FDCWD absolute path
   syscall(__NR_statx, AT_FDCWD, path_file0, flags, mask, &statxbuf);
   syscall(__NR_statx, AT_FDCWD, path_doesnotexist, flags, mask, &statxbuf);
   syscall(__NR_statx, AT_FDCWD, path_dir0_trailing_slash, flags, mask, &statxbuf);
   syscall(__NR_statx, AT_FDCWD, path_dir0, flags, mask, &statxbuf);
+
+  // __NR_statx dirfd - AT_EMPTY_PATH
+  flags = flags | AT_EMPTY_PATH;
+  syscall(__NR_statx, dirfd, "", flags, mask, &statxbuf);
 
   syscall(__NR_close, dirfd);
   syscall(__NR_exit, EXIT_SUCCESS);
@@ -597,11 +604,8 @@ TEST(SyscallTestSuite, Exec1)
       "RF /usr/bin/cat\n"
       "RX /etc/ld.so.preload\n"
       "RF /etc/ld.so.cache\n"
-      "R? /etc/ld.so.cache\n"
       "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
       "RF /tmp/fstrace-test-dir/file0\n"
-      "R? /tmp/fstrace-test-dir/file0\n"
 
       ,
       trimmed_output.c_str());
@@ -626,11 +630,8 @@ TEST(SyscallTestSuite, Exec2)
       "RF /usr/bin/cat\n"
       "RX /etc/ld.so.preload\n"
       "RF /etc/ld.so.cache\n"
-      "R? /etc/ld.so.cache\n"
       "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
       "RF /tmp/fstrace-test-dir/file0\n"
-      "R? /tmp/fstrace-test-dir/file0\n"
 
       ,
       trimmed_output.c_str());
@@ -657,11 +658,8 @@ TEST(SyscallTestSuite, Exec3)
       "RF /usr/bin/cat\n"
       "RX /etc/ld.so.preload\n"
       "RF /etc/ld.so.cache\n"
-      "R? /etc/ld.so.cache\n"
       "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
       "RF /tmp/fstrace-test-dir/file0\n"
-      "R? /tmp/fstrace-test-dir/file0\n"
 
       ,
       trimmed_output.c_str());
@@ -689,11 +687,8 @@ TEST(SyscallTestSuite, Exec4)
       "RF /usr/bin/cat\n"
       "RX /etc/ld.so.preload\n"
       "RF /etc/ld.so.cache\n"
-      "R? /etc/ld.so.cache\n"
       "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
       "RF /tmp/fstrace-test-dir/file0\n"
-      "R? /tmp/fstrace-test-dir/file0\n"
 
       ,
       trimmed_output.c_str());
@@ -720,11 +715,8 @@ TEST(SyscallTestSuite, Exec5)
       "RF /usr/bin/cat\n"
       "RX /etc/ld.so.preload\n"
       "RF /etc/ld.so.cache\n"
-      "R? /etc/ld.so.cache\n"
       "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
       "RF /tmp/fstrace-test-dir/file0\n"
-      "R? /tmp/fstrace-test-dir/file0\n"
 
       ,
       trimmed_output.c_str());
@@ -752,11 +744,8 @@ TEST(SyscallTestSuite, Exec6)
       "RF /usr/bin/cat\n"
       "RX /etc/ld.so.preload\n"
       "RF /etc/ld.so.cache\n"
-      "R? /etc/ld.so.cache\n"
       "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "R? /lib/x86_64-linux-gnu/libc.so.6\n"
       "RF /tmp/fstrace-test-dir/file0\n"
-      "R? /tmp/fstrace-test-dir/file0\n"
 
       ,
       trimmed_output.c_str());
@@ -902,6 +891,13 @@ void testfn_access()
   syscall(__NR_faccessat, dirfd, path_doesnotexist, R_OK, 0);
   syscall(__NR_faccessat, dirfd, path_dir0_trailing_slash, R_OK, 0);
   syscall(__NR_faccessat, dirfd, path_dir0, R_OK, 0);
+  
+
+  // __NR_faccessat dirfd - AT_EMPTY_PATH
+  syscall(__NR_faccessat, dirfd, "", R_OK, AT_EMPTY_PATH);
+
+  // __NR_faccessat2 dirfd - AT_EMPTY_PATH
+  syscall(__NR_faccessat2, dirfd, "", R_OK, AT_EMPTY_PATH);
 
   syscall(__NR_close, dirfd);
   syscall(__NR_exit, EXIT_SUCCESS);

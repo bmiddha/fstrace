@@ -107,41 +107,57 @@ extern char **environ;
 int prepare_tracee()
 {
   struct sock_filter filter[] = {
-      BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_statx, 32, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 31, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_open, 30, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_creat, 29, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat2, 28, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlink, 27, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 26, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_lstat, 25, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_stat, 24, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 23, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat2, 22, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_access, 21, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_fchdir, 20, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_chdir, 19, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 18, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 17, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_unlinkat, 16, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_unlink, 15, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rmdir, 14, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rename, 13, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_renameat, 12, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_renameat2, 11, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getdents, 10, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getdents64, 9, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_symlink, 8, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_symlinkat, 7, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_linkat, 6, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_link, 5, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mkdir, 4, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mkdirat, 3, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_truncate, 2, 0),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 1, 0),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+      // BPF_STMT(opcode,	operand)
+      // BPF_JUMP(opcode, operand, true_offset, false_offset).
+      // BPF_JMP + BPF_JEQ + BPF_K: pc += (A == k)	? jt : jf
+      // BPF_LD + BPF_W + BPF_ABS = load word at fixed offset into accumulator
+      // BPF_JMP + BPF_JSET + BPF_K: pc += (A & k) ? jt : jf
+      // BPF_RET + BPF_K = return constant
+      BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_statx, 7, 0),      // flags arg[2]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat, 6, 0),     // flags arg[2]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlinkat, 5, 0),   // flags arg[2]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_faccessat, 6, 0),  // flags arg[3]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_faccessat2, 5, 0), // flags arg[3]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_newfstatat, 4, 0), // flags arg[3]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execveat, 5, 0),   // flags arg[4]
+      BPF_JUMP(BPF_JMP + BPF_JA + BPF_K, 8, 0, 0),
+      BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, args[2])),
+      BPF_JUMP(BPF_JMP + BPF_JSET + BPF_K, AT_EMPTY_PATH, 4, 5),
+      BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, args[3])),
+      BPF_JUMP(BPF_JMP + BPF_JSET + BPF_K, AT_EMPTY_PATH, 2, 3),
+      BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, args[4])),
+      BPF_JUMP(BPF_JMP + BPF_JSET + BPF_K, AT_EMPTY_PATH, 0, 1),
+      BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
+      BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
+
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_open, 25, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_creat, 24, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat2, 23, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_readlink, 22, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_readlinkat, 21, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_lstat, 20, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_stat, 19, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_access, 18, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_fchdir, 17, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_chdir, 16, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execve, 15, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlink, 14, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rmdir, 13, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rename, 12, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat, 11, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat2, 10, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_getdents, 9, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_getdents64, 8, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_symlinkat, 7, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_linkat, 6, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_link, 5, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_mkdir, 4, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_mkdirat, 3, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_truncate, 2, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_symlink, 1, 0),
+      BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
+      BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
   };
   struct sock_fprog prog = {
       .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
