@@ -17,11 +17,11 @@ type openatPidTgidState struct {
 	Tgid     uint32
 	Comm     [16]int8
 	Nr       int16
+	Ret      int8
 	Dfd      int8
 	Filename [4096]int8
 	Flags    uint8
 	Mode     uint8
-	Ret      int8
 	_        [2]byte
 }
 
@@ -76,9 +76,11 @@ type openatSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type openatProgramSpecs struct {
+	TracepointSyscallsSysEnterCreat   *ebpf.ProgramSpec `ebpf:"tracepoint_syscalls_sys_enter_creat"`
 	TracepointSyscallsSysEnterOpen    *ebpf.ProgramSpec `ebpf:"tracepoint_syscalls_sys_enter_open"`
 	TracepointSyscallsSysEnterOpenat  *ebpf.ProgramSpec `ebpf:"tracepoint_syscalls_sys_enter_openat"`
 	TracepointSyscallsSysEnterOpenat2 *ebpf.ProgramSpec `ebpf:"tracepoint_syscalls_sys_enter_openat2"`
+	TracepointSyscallsSysExitCreat    *ebpf.ProgramSpec `ebpf:"tracepoint_syscalls_sys_exit_creat"`
 	TracepointSyscallsSysExitOpen     *ebpf.ProgramSpec `ebpf:"tracepoint_syscalls_sys_exit_open"`
 	TracepointSyscallsSysExitOpenat   *ebpf.ProgramSpec `ebpf:"tracepoint_syscalls_sys_exit_openat"`
 	TracepointSyscallsSysExitOpenat2  *ebpf.ProgramSpec `ebpf:"tracepoint_syscalls_sys_exit_openat2"`
@@ -149,9 +151,11 @@ type openatVariables struct {
 //
 // It can be passed to loadOpenatObjects or ebpf.CollectionSpec.LoadAndAssign.
 type openatPrograms struct {
+	TracepointSyscallsSysEnterCreat   *ebpf.Program `ebpf:"tracepoint_syscalls_sys_enter_creat"`
 	TracepointSyscallsSysEnterOpen    *ebpf.Program `ebpf:"tracepoint_syscalls_sys_enter_open"`
 	TracepointSyscallsSysEnterOpenat  *ebpf.Program `ebpf:"tracepoint_syscalls_sys_enter_openat"`
 	TracepointSyscallsSysEnterOpenat2 *ebpf.Program `ebpf:"tracepoint_syscalls_sys_enter_openat2"`
+	TracepointSyscallsSysExitCreat    *ebpf.Program `ebpf:"tracepoint_syscalls_sys_exit_creat"`
 	TracepointSyscallsSysExitOpen     *ebpf.Program `ebpf:"tracepoint_syscalls_sys_exit_open"`
 	TracepointSyscallsSysExitOpenat   *ebpf.Program `ebpf:"tracepoint_syscalls_sys_exit_openat"`
 	TracepointSyscallsSysExitOpenat2  *ebpf.Program `ebpf:"tracepoint_syscalls_sys_exit_openat2"`
@@ -159,9 +163,11 @@ type openatPrograms struct {
 
 func (p *openatPrograms) Close() error {
 	return _OpenatClose(
+		p.TracepointSyscallsSysEnterCreat,
 		p.TracepointSyscallsSysEnterOpen,
 		p.TracepointSyscallsSysEnterOpenat,
 		p.TracepointSyscallsSysEnterOpenat2,
+		p.TracepointSyscallsSysExitCreat,
 		p.TracepointSyscallsSysExitOpen,
 		p.TracepointSyscallsSysExitOpenat,
 		p.TracepointSyscallsSysExitOpenat2,

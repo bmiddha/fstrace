@@ -45,41 +45,24 @@ func initOpenAtProgram(dev, ino uint64) {
 	}
 	defer openAtObjs.Close()
 
-	link1, err := link.Tracepoint("syscalls", "sys_enter_openat", openAtObjs.TracepointSyscallsSysEnterOpenat, nil)
-	if err != nil {
-		log.Fatal("link error", err)
+	syscalls := map[string]*ebpf.Program{
+		"sys_enter_openat":  openAtObjs.TracepointSyscallsSysEnterOpenat,
+		"sys_exit_openat":   openAtObjs.TracepointSyscallsSysExitOpenat,
+		"sys_enter_openat2": openAtObjs.TracepointSyscallsSysEnterOpenat2,
+		"sys_exit_openat2":  openAtObjs.TracepointSyscallsSysExitOpenat2,
+		"sys_enter_open":    openAtObjs.TracepointSyscallsSysEnterOpen,
+		"sys_exit_open":     openAtObjs.TracepointSyscallsSysExitOpen,
+		"sys_enter_creat":   openAtObjs.TracepointSyscallsSysEnterCreat,
+		"sys_exit_creat":    openAtObjs.TracepointSyscallsSysExitCreat,
 	}
-	defer link1.Close()
 
-	link2, err := link.Tracepoint("syscalls", "sys_exit_openat", openAtObjs.TracepointSyscallsSysExitOpenat, nil)
-	if err != nil {
-		log.Fatal("link error", err)
+	for name, prog := range syscalls {
+		link, err := link.Tracepoint("syscalls", name, prog, nil)
+		if err != nil {
+			log.Fatal("link error ", err)
+		}
+		defer link.Close()
 	}
-	defer link2.Close()
-
-	link3, err := link.Tracepoint("syscalls", "sys_enter_openat2", openAtObjs.TracepointSyscallsSysEnterOpenat2, nil)
-	if err != nil {
-		log.Fatal("link error", err)
-	}
-	defer link3.Close()
-
-	link4, err := link.Tracepoint("syscalls", "sys_exit_openat2", openAtObjs.TracepointSyscallsSysExitOpenat2, nil)
-	if err != nil {
-		log.Fatal("link error", err)
-	}
-	defer link4.Close()
-
-	link5, err := link.Tracepoint("syscalls", "sys_enter_open", openAtObjs.TracepointSyscallsSysEnterOpen, nil)
-	if err != nil {
-		log.Fatal("link error", err)
-	}
-	defer link5.Close()
-
-	link6, err := link.Tracepoint("syscalls", "sys_exit_open", openAtObjs.TracepointSyscallsSysExitOpen, nil)
-	if err != nil {
-		log.Fatal("link error", err)
-	}
-	defer link6.Close()
 
 	go handleRingBufferOpenAt(ctx, openAtObjs.EventRingbuf)
 
@@ -123,8 +106,8 @@ func handleRingBufferOpenAt(ctx context.Context, events *ebpf.Map) {
 			continue
 		}
 
-		fmt.Printf("[command=%s] [pid=%d] [tgid=%d] [nr=%d] [dfd=%d] [filename=%s] [flags=%d] [mode=%d] [ret=%d]\n",
-		B2S(ev.Comm[:]), ev.Pid, ev.Tgid, ev.Nr, ev.Dfd, B2S(ev.Filename[:]), ev.Flags, ev.Mode, ev.Ret)
+		fmt.Printf("[command: %16s]\t[pid: %10d]\t[tgid: %10d]\t[nr: %4d]\t[dfd: %5d]\t[flags: %5d]\t[ret: %5d]\t\t[filename: %s]\n",
+		B2S(ev.Comm[:]), ev.Pid, ev.Tgid, ev.Nr, ev.Dfd, ev.Flags, ev.Ret, B2S(ev.Filename[:]))
 	}
 }
 

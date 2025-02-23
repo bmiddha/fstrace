@@ -8,6 +8,10 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
 
+#define __NR_openat 257
+#define __NR_openat2 437
+#define __NR_open 2
+#define __NR_creat 85
 
 struct {
   __uint(type, BPF_MAP_TYPE_RINGBUF);
@@ -22,13 +26,12 @@ struct pid_tgid_state {
   char comm[TASK_COMM_LEN];
 
   __s16 nr;
+  __s8 ret;
 
   __s8 dfd;
   char filename[PATH_MAX];
   __u8 flags;
   __u8 mode;
-
-  __s8 ret;
 };
 
 struct {
