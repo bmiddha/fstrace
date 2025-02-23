@@ -118,7 +118,7 @@ int tracepoint_syscalls_sys_enter_openat2(struct trace_event_raw_sys_enter *ctx)
   state->dfd = ctx->args[0];
   const void *filename_ptr = ctx->args[1];
   bpf_probe_read_user_str(state->filename, sizeof(state->filename), filename_ptr);
-  bpf_probe_read_user(how, sizeof(struct open_how), ctx->args[3]);
+  bpf_probe_read_user(how, sizeof (struct open_how), ctx->args[2]);
   state->flags = how->flags;
   state->mode = how->mode;
 
@@ -184,7 +184,7 @@ int tracepoint_syscalls_sys_enter_open(struct trace_event_raw_sys_enter *ctx)
   state->pid = nsinfo.pid;
   state->tgid = nsinfo.tgid;
   bpf_get_current_comm(state->comm, TASK_COMM_LEN);
-  state->dfd = 0;
+  state->dfd = -1;
   state->nr = ctx->id;
   const void *filename_ptr = ctx->args[0];
   bpf_probe_read_user_str(state->filename, sizeof(state->filename), filename_ptr);

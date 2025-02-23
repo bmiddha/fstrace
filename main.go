@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -86,12 +87,13 @@ func initOpenAtProgram(dev, ino uint64) {
 }
 
 func B2S(bs []int8) string {
-	b := make([]byte, len(bs))
-	for i, v := range bs {
-			b[i] = byte(v)
-	}
-	return string(b)
+  b := make([]byte, len(bs))
+  for i, v := range bs {
+	b[i] = byte(v)
+  }
+  return string(b[:bytes.IndexByte(b, 0)])
 }
+
 func handleRingBufferOpenAt(ctx context.Context, events *ebpf.Map) {
 	eventReader, err := ringbuf.NewReader(events)
 	if err != nil {
@@ -121,7 +123,7 @@ func handleRingBufferOpenAt(ctx context.Context, events *ebpf.Map) {
 			continue
 		}
 
-		log.Printf("[command=%s] [pid=%d] [tgid=%d] [nr=%d] [dfd=%d] [filename=%s] [flags=%d] [mode=%d] [ret=%d]\n",
+		fmt.Printf("[command=%s] [pid=%d] [tgid=%d] [nr=%d] [dfd=%d] [filename=%s] [flags=%d] [mode=%d] [ret=%d]\n",
 		B2S(ev.Comm[:]), ev.Pid, ev.Tgid, ev.Nr, ev.Dfd, B2S(ev.Filename[:]), ev.Flags, ev.Mode, ev.Ret)
 	}
 }
@@ -136,7 +138,7 @@ func main() {
 
 	dev := devinfo.Sys().(*syscall.Stat_t).Dev
 	ino := devinfo.Sys().(*syscall.Stat_t).Ino
-	log.Printf("NS info. DEV=%d, INODE=%d\n", dev, ino)
+	fmt.Printf("NS info. DEV=%d, INODE=%d\n", dev, ino)
 
 	initOpenAtProgram(dev, ino)
 }
