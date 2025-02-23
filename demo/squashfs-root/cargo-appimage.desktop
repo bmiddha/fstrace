@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=ecli-rs
+Exec=bin
+Icon=icon
+Type=Application
+Categories=Utility;
+X-AppImage-Version=0.2.9

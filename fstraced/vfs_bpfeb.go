@@ -12,6 +12,15 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+type vfsEventT struct {
+	Type uint32
+	Pid  uint32
+	Cgid uint64
+	Str  [4096]int8
+}
+
+type vfsSimpleBuf struct{ Buf [32768]uint8 }
+
 // loadVfs returns the embedded CollectionSpec for vfs.
 func loadVfs() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_VfsBytes)
@@ -53,14 +62,18 @@ type vfsSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type vfsProgramSpecs struct {
-	Prog *ebpf.ProgramSpec `ebpf:"prog"`
+	RawTracepointSysEnter *ebpf.ProgramSpec `ebpf:"raw_tracepoint_sys_enter"`
+	RawTracepointSysExit  *ebpf.ProgramSpec `ebpf:"raw_tracepoint_sys_exit"`
 }
 
 // vfsMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type vfsMapSpecs struct {
-	EventRingbuf *ebpf.MapSpec `ebpf:"event_ringbuf"`
+	BufsOff       *ebpf.MapSpec `ebpf:"bufs_off"`
+	Events        *ebpf.MapSpec `ebpf:"events"`
+	TmpBufMap     *ebpf.MapSpec `ebpf:"tmp_buf_map"`
+	TmpStorageMap *ebpf.MapSpec `ebpf:"tmp_storage_map"`
 }
 
 // vfsObjects contains all objects after they have been loaded into the kernel.
@@ -82,12 +95,18 @@ func (o *vfsObjects) Close() error {
 //
 // It can be passed to loadVfsObjects or ebpf.CollectionSpec.LoadAndAssign.
 type vfsMaps struct {
-	EventRingbuf *ebpf.Map `ebpf:"event_ringbuf"`
+	BufsOff       *ebpf.Map `ebpf:"bufs_off"`
+	Events        *ebpf.Map `ebpf:"events"`
+	TmpBufMap     *ebpf.Map `ebpf:"tmp_buf_map"`
+	TmpStorageMap *ebpf.Map `ebpf:"tmp_storage_map"`
 }
 
 func (m *vfsMaps) Close() error {
 	return _VfsClose(
-		m.EventRingbuf,
+		m.BufsOff,
+		m.Events,
+		m.TmpBufMap,
+		m.TmpStorageMap,
 	)
 }
 
@@ -95,12 +114,14 @@ func (m *vfsMaps) Close() error {
 //
 // It can be passed to loadVfsObjects or ebpf.CollectionSpec.LoadAndAssign.
 type vfsPrograms struct {
-	Prog *ebpf.Program `ebpf:"prog"`
+	RawTracepointSysEnter *ebpf.Program `ebpf:"raw_tracepoint_sys_enter"`
+	RawTracepointSysExit  *ebpf.Program `ebpf:"raw_tracepoint_sys_exit"`
 }
 
 func (p *vfsPrograms) Close() error {
 	return _VfsClose(
-		p.Prog,
+		p.RawTracepointSysEnter,
+		p.RawTracepointSysExit,
 	)
 }
 
