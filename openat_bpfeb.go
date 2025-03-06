@@ -15,11 +15,14 @@ import (
 type openatPidTgidState struct {
 	Pid      uint32
 	Tgid     uint32
+	NsPid    uint32
+	NsTgid   uint32
 	Comm     [16]int8
 	Nr       int16
 	Ret      int8
 	Dfd      int8
 	Filename [4096]int8
+	Pwd      [4096]int8
 	Flags    uint8
 	Mode     uint8
 	_        [2]byte
@@ -31,6 +34,11 @@ type openatScratchpad struct {
 		Flags   uint64
 		Mode    uint64
 		Resolve uint64
+	}
+	PwdBuf [2048]int8
+	Pidns  struct {
+		Pid  uint32
+		Tgid uint32
 	}
 }
 

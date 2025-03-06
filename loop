@@ -1,0 +1,36 @@
+#!/bin/bash
+set -evx
+
+# this is an inner-loop helper CLI
+
+TRACE_PIPE="/sys/kernel/debug/tracing/trace_pipe"
+function trace_pipe() {
+  sudo cat $TRACE_PIPE
+}
+
+function build() {
+  go generate && go build
+}
+
+function run() {
+  sudo ./fstrace
+}
+
+function loop() {
+  build
+  run
+}
+
+function main() {
+  if [ "$1" == "trace" ]; then
+    trace_pipe
+  elif [ "$1" == "build" ]; then
+    build
+  elif [ "$1" == "run" ]; then
+    run
+  else
+    loop
+  fi
+}
+
+main "$@"

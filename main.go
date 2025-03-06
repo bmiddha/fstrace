@@ -70,11 +70,11 @@ func initOpenAtProgram(dev, ino uint64) {
 }
 
 func B2S(bs []int8) string {
-  b := make([]byte, len(bs))
-  for i, v := range bs {
-	b[i] = byte(v)
-  }
-  return string(b[:bytes.IndexByte(b, 0)])
+	b := make([]byte, len(bs))
+	for i, v := range bs {
+		b[i] = byte(v)
+	}
+	return string(b[:bytes.IndexByte(b, 0)])
 }
 
 func handleRingBufferOpenAt(ctx context.Context, events *ebpf.Map) {
@@ -106,8 +106,8 @@ func handleRingBufferOpenAt(ctx context.Context, events *ebpf.Map) {
 			continue
 		}
 
-		fmt.Printf("[command: %16s]\t[pid: %10d]\t[tgid: %10d]\t[nr: %4d]\t[dfd: %5d]\t[flags: %5d]\t[ret: %5d]\t\t[filename: %s]\n",
-		B2S(ev.Comm[:]), ev.Pid, ev.Tgid, ev.Nr, ev.Dfd, ev.Flags, ev.Ret, B2S(ev.Filename[:]))
+		fmt.Printf("[command: %16s]\t[ns_pid: %10d]\t[ns_tgid: %10d]\t[nr: %4d]\t[dfd: %5d]\t[flags: %5d]\t[ret: %5d]\t[pwd: %s]\t[filename: %s]\n",
+			B2S(ev.Comm[:]), ev.NsPid, ev.NsTgid, ev.Nr, ev.Dfd, ev.Flags, ev.Ret, B2S(ev.Pwd[:]), B2S(ev.Filename[:]))
 	}
 }
 

@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "numbers": "c",
+    "typeinfo": "c",
+    "random": "c"
+  }
+}

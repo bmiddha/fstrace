@@ -19,10 +19,15 @@ struct {
 } event_ringbuf SEC(".maps");
 
 #define PATH_MAX 4096
+#define PATH_COMPONENTS_MAX 10
+#define PATH_COMPONENTS_STR_MAX 256
+#define DCACHE_DISCONNECTED (1 << 5)
 
 struct pid_tgid_state {
   __u32 pid;
   __u32 tgid;
+  __u32 ns_pid;
+  __u32 ns_tgid;
   char comm[TASK_COMM_LEN];
 
   __s16 nr;
@@ -30,6 +35,7 @@ struct pid_tgid_state {
 
   __s8 dfd;
   char filename[PATH_MAX];
+  char pwd[PATH_MAX];
   __u8 flags;
   __u8 mode;
 };
@@ -49,6 +55,10 @@ struct {
 struct scratchpad{
   struct pid_tgid_state state;
   struct open_how how;
+  // char pwd_path_path_segments[PATH_COMPONENTS_MAX][PATH_COMPONENTS_STR_MAX];
+  // __u8 pwd_path_segments_num;
+  char pwd_buf[PATH_MAX >> 1];
+  struct bpf_pidns_info pidns;
 };
 
 struct {
