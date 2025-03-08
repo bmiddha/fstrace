@@ -322,23 +322,15 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, char *cwd, __u64 addr, 
       return;
     }
 
+    char temp_buffer[PATH_MAX];
     if (buffer[0] == '.' && buffer[1] == '/')
     {
-      char temp_buffer[PATH_MAX];
       snprintf(temp_buffer, PATH_MAX, "%s%s", cwd, buffer + 1);
       strncpy(buffer, temp_buffer, buffer_size);
     }
     else
     {
-      char temp_buffer[PATH_MAX];
-      if (buffer[strlen(buffer) - 1] == '/')
-      {
-        snprintf(temp_buffer, PATH_MAX, "%s%s", cwd, buffer);
-      }
-      else
-      {
-        snprintf(temp_buffer, PATH_MAX, "%s/%s", cwd, buffer);
-      }
+      snprintf(temp_buffer, PATH_MAX, "%s/%s", cwd, buffer);
       strncpy(buffer, temp_buffer, buffer_size);
     }
   }
