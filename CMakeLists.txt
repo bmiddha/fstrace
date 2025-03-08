@@ -33,12 +33,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   message(STATUS "Setting DEBUG flag. DEBUG_FD (${DEBUG_FD}) will have debug log. and FD3 will have comments with syscall info.")
 endif()
 
-set_target_properties(fstrace PROPERTIES
-    ADDITIONAL_CLEAN_FILES "${PROJECT_SOURCE_DIR}/node/fstrace/${PROJECT_NAME}"
-)
-set_target_properties(fstrace PROPERTIES
-    ADDITIONAL_CLEAN_FILES "${PROJECT_SOURCE_DIR}/node/fstrace/${PROJECT_NAME}${CMAKE_DEBUG_POSTFIX}"
-)
 add_custom_command(
     TARGET fstrace POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -65,6 +59,11 @@ add_executable(
   syscall-tests
   tests/syscalls.cc
 )
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  target_compile_definitions(syscall-tests PRIVATE DEBUG)
+  message(STATUS "Setting DEBUG flag. DEBUG_FD (${DEBUG_FD}) will have debug log. and FD3 will have comments with syscall info.")
+  target_compile_definitions(syscall-tests PRIVATE DEBUGFD=${DEBUG_FD})
+endif()
 target_link_libraries(syscall-tests GTest::gtest_main)
 
 include(GoogleTest)

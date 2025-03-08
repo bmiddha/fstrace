@@ -150,6 +150,7 @@ char *path_newdir6 = "/tmp/fstrace-test-dir/newdir6";
 char *path_newdir7_trailing_slash_rel = "./newdir7/";
 char *path_newdir8_rel = "./newdir8";
 char *path_usr_bin = "/usr/bin";
+char *uninteresting_path = "/proc/self";
 
 void setup()
 {
@@ -891,7 +892,6 @@ void testfn_access()
   syscall(__NR_faccessat, dirfd, path_doesnotexist, R_OK, 0);
   syscall(__NR_faccessat, dirfd, path_dir0_trailing_slash, R_OK, 0);
   syscall(__NR_faccessat, dirfd, path_dir0, R_OK, 0);
-  
 
   // __NR_faccessat dirfd - AT_EMPTY_PATH
   syscall(__NR_faccessat, dirfd, "", R_OK, AT_EMPTY_PATH);
@@ -1003,13 +1003,23 @@ TEST(SyscallTestSuite, Unlink)
 
 void testfn_getdents()
 {
-  int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
   struct dirent dirent;
 
+  int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
   syscall(__NR_getdents, dirfd, &dirent, sizeof(dirent));
   syscall(__NR_getdents64, dirfd, &dirent, sizeof(dirent));
-
   syscall(__NR_close, dirfd);
+
+  int file0fd = syscall(__NR_open, path_file0, O_RDONLY);
+  syscall(__NR_getdents, file0fd, &dirent, sizeof(dirent));
+  syscall(__NR_getdents64, file0fd, &dirent, sizeof(dirent));
+  syscall(__NR_close, file0fd);
+
+  int doesNotExist = syscall(__NR_open, path_doesnotexist, O_RDONLY);
+  syscall(__NR_getdents, doesNotExist, &dirent, sizeof(dirent));
+  syscall(__NR_getdents64, doesNotExist, &dirent, sizeof(dirent));
+  syscall(__NR_close, doesNotExist);
+
   syscall(__NR_exit, EXIT_SUCCESS);
 }
 TEST(SyscallTestSuite, Getdents)
@@ -1023,6 +1033,14 @@ TEST(SyscallTestSuite, Getdents)
 
       "ED /tmp/fstrace-test-dir\n"
       "ED /tmp/fstrace-test-dir\n"
+
+      "RF /tmp/fstrace-test-dir/file0\n"
+      "EX /tmp/fstrace-test-dir/file0\n"
+      "EX /tmp/fstrace-test-dir/file0\n"
+
+      "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      "EX /tmp/fstrace-test-dir/does-not-exist\n"
+      "EX /tmp/fstrace-test-dir/does-not-exist\n"
 
       ,
       trimmed_output.c_str());
@@ -1229,6 +1247,32 @@ TEST(SyscallTestSuite, Link)
       "WF /tmp/fstrace-test-dir/newfile7\n"
 
       ,
+      trimmed_output.c_str());
+}
+
+void testfn_filtering()
+{
+  struct dirent dirent;
+  
+  int dirfd;
+  dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
+  syscall(__NR_close, dirfd);
+
+  dirfd = syscall(__NR_open, uninteresting_path, O_RDONLY | O_DIRECTORY);
+  syscall(__NR_getdents64, dirfd, &dirent, sizeof(dirent));
+  syscall(__NR_close, dirfd);
+
+  syscall(__NR_exit, EXIT_SUCCESS);
+}
+TEST(SyscallTestSuite, Filtering)
+{
+  setup();
+  std::string output = trace_testfn(testfn_filtering);
+  std::string trimmed_output = filter_output(output);
+  EXPECT_STREQ(
+
+      "RD /tmp/fstrace-test-dir\n",
+
       trimmed_output.c_str());
 }
 

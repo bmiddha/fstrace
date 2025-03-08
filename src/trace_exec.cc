@@ -131,6 +131,7 @@ int prepare_tracee()
       BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
       BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
 
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_close, 26, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_open, 25, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_creat, 24, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat2, 23, 0),
@@ -202,7 +203,7 @@ int get_fd_path(pid_t proc_pid, std::map<unsigned long, char *> fd_cache, long l
   if (fd_cache.find(fd) != fd_cache.end())
   {
     strncpy(buf, fd_cache[fd], bufsize);
-    LOG_DEBUG("fd_cache: hit %lld %s", fd, buf)
+    LOG_DEBUG("[PID: %d] fd_cache: hit %lld %s", proc_pid, fd, buf)
     return strlen(buf);
   }
 
@@ -215,7 +216,7 @@ int get_fd_path(pid_t proc_pid, std::map<unsigned long, char *> fd_cache, long l
 
   buf[n] = '\0';
   fd_cache[fd] = strdup(buf);
-  LOG_DEBUG("fd_cache: save (miss) %lld %s", fd, buf)
+  LOG_DEBUG("[PID: %d] fd_cache: save (miss) %lld %s", proc_pid, fd, buf)
 
   return n;
 }
@@ -291,9 +292,9 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, char *cwd, __u64 addr, 
 {
   LOG_DEBUG("[PID: %d] read_maybe_relative_pathname_from_tracee(pid=%d, cwd=%s, addr=%p, buffer=%p, buffer_size=%zu)",
             pid, pid, cwd, addr, buffer, buffer_size)
-  LOG_DEBUG("cwd: %s", cwd)
+  LOG_DEBUG("[PID: %d] cwd: %s", pid, cwd)
   read_cstring_from_tracee(pid, addr, buffer, buffer_size);
-  LOG_DEBUG("buffer: %s", buffer)
+  LOG_DEBUG("[PID: %d] buffer: %s", pid, buffer)
 
   if (buffer[0] != '/')
   {
@@ -339,21 +340,21 @@ void read_maybe_relative_pathname_from_tracee(pid_t pid, char *cwd, __u64 addr, 
 void parse_dirfd_pathname_from_tracee(pid_t pid, std::map<unsigned long, char *> fd_cache, __u64 dirfd, __u64 pathname,
                                       char *fullpath, size_t fullpath_size)
 {
-  LOG_DEBUG("parse_dirfd_pathname_from_tracee")
+  LOG_DEBUG("[PID: %d] parse_dirfd_pathname_from_tracee", pid)
   char path[PATH_MAX];
   read_cstring_from_tracee(pid, pathname, path, PATH_MAX);
-  // LOG_DEBUG("path: %s", path)
+  LOG_DEBUG("[PID: %d] path: %s", pid, path)
   if (path[0] == '/')
   {
-    LOG_DEBUG("path is absolute")
+    LOG_DEBUG("[PID: %d] path is absolute", pid)
     sprintf(fullpath, "%s", path);
   }
   else
   {
-    LOG_DEBUG("path is relative")
+    LOG_DEBUG("[PID: %d] path is relative", pid)
     char dirpath[PATH_MAX];
     get_fd_path(pid, fd_cache, dirfd, dirpath);
-    // LOG_DEBUG("dirpath: %s", dirpath)
+    LOG_DEBUG("[PID: %d] dirpath: %s", pid, dirpath)
     if (strlen(path) == 0)
     {
       snprintf(fullpath, fullpath_size, "%s", dirpath);
@@ -364,7 +365,7 @@ void parse_dirfd_pathname_from_tracee(pid_t pid, std::map<unsigned long, char *>
     }
     normalize_path(fullpath);
   }
-  // LOG_DEBUG("fullpath: %s", fullpath)
+  LOG_DEBUG("[PID: %d] fullpath: %s", pid, fullpath)
 }
 
 void parse_at_syscall_dirfd_pathname_from_tracee(pid_t pid, std::map<unsigned long, char *> fd_cache, char *cwd,
@@ -388,7 +389,7 @@ void parse_at_syscall_with_flags_dirfd_pathname_from_tracee(pid_t pid, std::map<
   {
     if (flags & AT_EMPTY_PATH)
     {
-      LOG_DEBUG("AT_EMPTY_PATH")
+      LOG_DEBUG("[PID: %d] AT_EMPTY_PATH", pid)
       get_fd_path(pid, fd_cache, dirfd, fullpath);
     }
     else
@@ -498,14 +499,14 @@ pid_t initial_pid;
 
 int ptrace_syscall(pid_t child_pid, int status)
 {
-  LOG_DEBUG("PTRACE_SYSCALL pid: %d", child_pid)
+  LOG_DEBUG("[PID: %d] PTRACE_SYSCALL", child_pid)
   if (ptrace(PTRACE_SYSCALL, child_pid, 0, status) != 0)
   {
     if (errno)
     {
       if (errno == ESRCH)
       {
-        LOG_DEBUG("Child %d died unexpectedly", child_pid)
+        LOG_DEBUG("[PID: %d] Child died unexpectedly", child_pid)
         if (child_pid == initial_pid)
         {
           exit(0);
@@ -527,14 +528,14 @@ int ptrace_syscall(pid_t child_pid, int status)
 
 int ptrace_cont(pid_t child_pid, int status)
 {
-  LOG_DEBUG("PTRACE_CONT pid: %d", child_pid)
+  LOG_DEBUG("[PID: %d] PTRACE_CONT pid", child_pid)
   if (ptrace(PTRACE_CONT, child_pid, 0, status) != 0)
   {
     if (errno)
     {
       if (errno == ESRCH)
       {
-        LOG_DEBUG("Child %d died unexpectedly", child_pid)
+        LOG_DEBUG("[PID: %d] Child died unexpectedly", child_pid)
         if (child_pid == initial_pid)
         {
           exit(0);
@@ -612,6 +613,18 @@ int run_tracer(pid_t child_pid)
 
   struct open_how temp_open_how;
 
+#define CONTINUE_AND_SKIP_SYS_EXIT                                                                                     \
+  if (ptrace_cont(child_pid, 0) != 0)                                                                                  \
+  {                                                                                                                    \
+    return -1;                                                                                                         \
+  }
+
+#define CONTINUE_TO_SYS_EXIT                                                                                           \
+  if (ptrace_syscall(child_pid, 0) != 0)                                                                               \
+  {                                                                                                                    \
+    return -1;                                                                                                         \
+  }
+
 #define PATH_FILTER(path)                                                                                              \
   path[0] == '\0' || path[0] != '/' /* filter pipe:[], socket:[] */ || strncmp(path, "/proc/", 6) == 0 ||              \
       strncmp(path, "/dev/", 5) == 0 || strstr(path, "/.pnpm/") != NULL
@@ -620,17 +633,11 @@ int run_tracer(pid_t child_pid)
   if (PATH_FILTER(path))                                                                                               \
   {                                                                                                                    \
     LOG_DEBUG("[PID: %d] SYS_ENTER_PATH_FITLER: continue. uninteresting path %s", child_pid, path)                     \
-    if (ptrace_cont(child_pid, 0) != 0)                                                                                \
-    {                                                                                                                  \
-      return -1;                                                                                                       \
-    }                                                                                                                  \
+    CONTINUE_AND_SKIP_SYS_EXIT                                                                                         \
   }                                                                                                                    \
   else                                                                                                                 \
   {                                                                                                                    \
-    if (ptrace_syscall(child_pid, 0) != 0)                                                                             \
-    {                                                                                                                  \
-      return -1;                                                                                                       \
-    }                                                                                                                  \
+    CONTINUE_TO_SYS_EXIT                                                                                               \
   }
 
   for (;;)
@@ -705,6 +712,19 @@ int run_tracer(pid_t child_pid)
 
         switch (nr)
         {
+        // int close(int fd);
+        case __NR_close:
+        {
+          thread_op->op_close.fd = arg0;
+          if (thread_op->fd_cache.find(arg0) != thread_op->fd_cache.end())
+          {
+            free(thread_op->fd_cache[arg0]);
+            thread_op->fd_cache.erase(arg0);
+          }
+          LOG_DEBUG("[PID: %d] close fd %lld", child_pid, arg0)
+          CONTINUE_AND_SKIP_SYS_EXIT
+          break;
+        }
         // int chdir(const char *path);
         case __NR_chdir:
         {
@@ -961,7 +981,7 @@ int run_tracer(pid_t child_pid)
           }
         }
         }
-        LOG_DEBUG("PTRACE_SYSCALL_INFO_SECCOMP END: %llu", nr)
+        LOG_DEBUG("[PID: %d] PTRACE_SYSCALL_INFO_SECCOMP END: %llu", child_pid, nr)
       }
 
       else if (info.op == PTRACE_SYSCALL_INFO_EXIT)
@@ -986,8 +1006,8 @@ int run_tracer(pid_t child_pid)
   time_spent_usec =                                                                                                    \
       (end_time.tv_sec - thread_op->start_time.tv_sec) * 1000000 + (end_time.tv_usec - thread_op->start_time.tv_usec); \
   dprintf(3, "%c%c %s\n", access_type, file_type, path);                                                               \
-  LOG_DEBUG("# %s (time_spent_usec: %ld)", #comment, time_spent_usec)                                                  \
-  LOG_DEBUG("%c%c %s", access_type, file_type, path)
+  LOG_DEBUG("[PID: %d] # %s (time_spent_usec: %ld)", child_pid, #comment, time_spent_usec)                             \
+  LOG_DEBUG("[PID: %d] %c%c %s", child_pid, access_type, file_type, path)
 #else
 #define LOG_ACCESS(comment, access_type, file_type, path)                                                              \
   normalize_path(path);                                                                                                \
@@ -997,7 +1017,7 @@ int run_tracer(pid_t child_pid)
 #define CONTINUE_TRACEE                                                                                                \
   if (continued == 0)                                                                                                  \
   {                                                                                                                    \
-    LOG_DEBUG("PTRACE_CONT pid: %d", child_pid)                                                                        \
+    LOG_DEBUG("[PID: %d] PTRACE_CONT pid", child_pid)                                                                  \
     if (ptrace(PTRACE_CONT, child_pid, 0, 0) != 0)                                                                     \
     {                                                                                                                  \
       fprintf(stderr, "\nptrace(PTRACE_CONT)\n");                                                                      \
@@ -1010,6 +1030,9 @@ int run_tracer(pid_t child_pid)
         int continued = 0;
         switch (thread_op->nr)
         {
+        // case __NR_close:
+        // {
+        // }
         case __NR_chdir:
         case __NR_fchdir:
         {
@@ -1049,7 +1072,7 @@ int run_tracer(pid_t child_pid)
           CONTINUE_TRACEE
           if (isError == 0)
           {
-            LOG_DEBUG("fd_cache: save %ld %s", rVal, thread_op->op_open.path)
+            LOG_DEBUG("[PID: %d] fd_cache: save %ld %s", child_pid, rVal, thread_op->op_open.path)
             thread_op->fd_cache[rVal] = strdup(thread_op->op_open.path);
           }
           file_type = 'F';
@@ -1070,14 +1093,14 @@ int run_tracer(pid_t child_pid)
           CONTINUE_TRACEE
           if (isError == 0)
           {
-            LOG_DEBUG("fd_cache: save %ld %s", rVal, thread_op->op_open.path)
+            LOG_DEBUG("[PID: %d] fd_cache: save %ld %s", child_pid, rVal, thread_op->op_open.path)
             thread_op->fd_cache[rVal] = strdup(thread_op->op_open.path);
           }
 
           int flags = thread_op->op_open.flags;
           path = thread_op->op_open.path;
 
-          LOG_DEBUG("flags: %d", flags)
+          LOG_DEBUG("[PID: %d] flags: %d", child_pid, flags)
 
           access_type = (flags & O_WRONLY || flags & O_RDWR || flags & O_CREAT) ? 'W' : 'R';
           file_type = (flags & O_DIRECTORY) ? 'D' : 'F';
@@ -1328,6 +1351,8 @@ int run_tracer(pid_t child_pid)
 
           if (isError != 0)
           {
+            LOG_DEBUG("[PID: %d] fd_cache: save %ld %s", child_pid, rVal, path)
+            thread_op->fd_cache[rVal] = strdup(path);
             break;
           }
           LOG_ACCESS("mkdir/mkdirat", access_type, file_type, path)
@@ -1366,7 +1391,8 @@ int run_tracer(pid_t child_pid)
           break;
         }
         }
-        LOG_DEBUG("PTRACE_SYSCALL_INFO_EXIT END: %llu. rVal: %ld, isError: %ld", thread_op->nr, rVal, isError)
+        LOG_DEBUG("[PID: %d] PTRACE_SYSCALL_INFO_EXIT END: %llu. rVal: %ld, isError: %ld", child_pid, thread_op->nr,
+                  rVal, isError)
         CONTINUE_TRACEE
       }
     }
@@ -1381,10 +1407,10 @@ int run_tracer(pid_t child_pid)
         fprintf(stderr, "Error: %s\n", strerror(errno));
         return -1;
       }
-      LOG_DEBUG("Child %d stopped by vfork (new child %d)\n", child_pid, new_child_pid)
+      LOG_DEBUG("[PID: %d] Child stopped by vfork (new child %d)\n", child_pid, new_child_pid)
       char cmdline_buf[PATH_MAX];
       read_cmdline(new_child_pid, cmdline_buf);
-      LOG_DEBUG("new_child_pid: %d, cmdline: %s", new_child_pid, cmdline_buf)
+      LOG_DEBUG("[PID: %d] new_child_pid: %d, cmdline: %s", child_pid, new_child_pid, cmdline_buf)
 #endif
 
       if (ptrace_cont(child_pid, WSTOPSIG(status)) != 0)
@@ -1402,10 +1428,10 @@ int run_tracer(pid_t child_pid)
         fprintf(stderr, "Error: %s\n", strerror(errno));
         return -1;
       }
-      LOG_DEBUG("Child %d stopped by fork (new child %d)", child_pid, new_child_pid)
+      LOG_DEBUG("[PID: %d] Child stopped by fork (new child %d)", child_pid, new_child_pid)
       char cmdline_buf[PATH_MAX];
       read_cmdline(new_child_pid, cmdline_buf);
-      LOG_DEBUG("new_child_pid: %d, cmdline: %s", new_child_pid, cmdline_buf)
+      LOG_DEBUG("[PID: %d] new_child_pid: %d, cmdline: %s", child_pid, new_child_pid, cmdline_buf)
 #endif
       if (ptrace_cont(child_pid, WSTOPSIG(status)) != 0)
       {
@@ -1422,10 +1448,10 @@ int run_tracer(pid_t child_pid)
         fprintf(stderr, "Error: %s\n", strerror(errno));
         return -1;
       }
-      LOG_DEBUG("Child %d stopped by clone (new child %d)", child_pid, new_child_pid)
+      LOG_DEBUG("[PID: %d] Child stopped by clone (new child %d)", child_pid, new_child_pid)
       char cmdline_buf[PATH_MAX];
       read_cmdline(new_child_pid, cmdline_buf);
-      LOG_DEBUG("new_child_pid: %d, cmdline: %s", new_child_pid, cmdline_buf)
+      LOG_DEBUG("[PID: %d] new_child_pid: %d, cmdline: %s", child_pid, new_child_pid, cmdline_buf)
 #endif
       if (ptrace_cont(child_pid, WSTOPSIG(status)) != 0)
       {
@@ -1435,10 +1461,10 @@ int run_tracer(pid_t child_pid)
     else if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)))
     {
 #if DEBUG
-      LOG_DEBUG("Child %d stopped by exec", child_pid)
+      LOG_DEBUG("[PID: %d] Child stopped by exec", child_pid)
       char cmdline_buf[PATH_MAX];
       read_cmdline(child_pid, cmdline_buf);
-      LOG_DEBUG("child_pid: %d, cmdline: %s", child_pid, cmdline_buf)
+      LOG_DEBUG("[PID: %d] cmdline: %s", child_pid, cmdline_buf)
 #endif
       if (ptrace_syscall(child_pid, WSTOPSIG(status)) != 0)
       {
@@ -1452,22 +1478,22 @@ int run_tracer(pid_t child_pid)
       unsigned long traceeStatus = 0;
       if (ptrace(PTRACE_GETEVENTMSG, child_pid, 0, &traceeStatus) == -1)
       {
+        pid_info_map.erase(child_pid);
         if (errno)
         {
           if (errno == ESRCH)
           {
-            LOG_DEBUG("Child %d died unexpectedly", child_pid)
+            LOG_DEBUG("[PID: %d] Child died unexpectedly", child_pid)
             if (child_pid == initial_pid)
             {
               exit(0);
             }
-            pid_info_map.erase(child_pid);
             continue;
           }
         }
         else
         {
-          LOG_DEBUG("Child %d exited with code %lu", child_pid, traceeStatus)
+          LOG_DEBUG("[PID: %d] Child exited with code %lu", child_pid, traceeStatus)
           fprintf(stderr, "\nPTRACE_EVENT_EXIT ptrace(PTRACE_GETEVENTMSG)\n");
           fprintf(stderr, "Error: %s\n", strerror(errno));
           return -1;
@@ -1481,7 +1507,7 @@ int run_tracer(pid_t child_pid)
     }
     else if (WIFSTOPPED(status) && !(WSTOPSIG(status) & 0x80))
     {
-      LOG_DEBUG("Child %d. stopped with signal %d", child_pid, WSTOPSIG(status))
+      LOG_DEBUG("[PID: %d] Child stopped with signal %d", child_pid, WSTOPSIG(status))
       if (ptrace_syscall(child_pid, WSTOPSIG(status)) != 0)
       {
         return -1;
@@ -1489,7 +1515,7 @@ int run_tracer(pid_t child_pid)
     }
     else
     {
-      LOG_DEBUG("Child %d. unexpected stop. status: %d", child_pid, status)
+      LOG_DEBUG("[PID: %d] Child unexpected stop. status: %d", child_pid, status)
       if (ptrace_syscall(child_pid, 0) != 0)
       {
         return -1;
