@@ -3,7 +3,8 @@ name: ci
 on: [push, pull_request]
 
 jobs:
-  cmake:
+  cmake-release:
+    name: CMake Build and Test
     runs-on: ubuntu-latest
 
     steps:
@@ -13,19 +14,17 @@ jobs:
     - name: Build Project (Release)
       uses: threeal/cmake-action@v2.1.0
       with:
-        build-type: Release
+        options: |
+          CMAKE_BUILD_TYPE=Release
 
     - name: Test Project (Release)
       uses: threeal/ctest-action@v1.1.0
-      with:
-        build-config: Release
 
     - name: Build Project (Debug)
       uses: threeal/cmake-action@v2.1.0
       with:
-        build-type: Debug
+        options: |
+          CMAKE_BUILD_TYPE=Debug
 
     - name: Test Project (Debug)
       uses: threeal/ctest-action@v1.1.0
-      with:
-        build-config: Debug
