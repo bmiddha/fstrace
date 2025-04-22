@@ -114,7 +114,7 @@ int prepare_tracee()
       // BPF_JMP + BPF_JSET + BPF_K: pc += (A & k) ? jt : jf
       // BPF_RET + BPF_K = return constant
       BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_statx, 7, 0),      // flags arg[2]
+      // BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_statx, 7, 0),      // flags arg[2]
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat, 6, 0),     // flags arg[2]
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlinkat, 5, 0),   // flags arg[2]
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_faccessat, 6, 0),  // flags arg[3]

@@ -563,25 +563,25 @@ TEST(SyscallTestSuite, Statx)
 
       "RD /tmp/fstrace-test-dir\n"
 
-      "R? /tmp/fstrace-test-dir/file0\n"
-      "RX /tmp/fstrace-test-dir/does-not-exist\n"
-      "R? /tmp/fstrace-test-dir/dir0/\n"
-      "R? /tmp/fstrace-test-dir/dir0\n"
+      // "R? /tmp/fstrace-test-dir/file0\n"
+      // "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      // "R? /tmp/fstrace-test-dir/dir0/\n"
+      // "R? /tmp/fstrace-test-dir/dir0\n"
 
-      "R? /tmp/fstrace-test-dir/file0\n"
-      "RX /tmp/fstrace-test-dir/does-not-exist\n"
-      "R? /tmp/fstrace-test-dir/dir0/\n"
-      "R? /tmp/fstrace-test-dir/dir0\n"
+      // "R? /tmp/fstrace-test-dir/file0\n"
+      // "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      // "R? /tmp/fstrace-test-dir/dir0/\n"
+      // "R? /tmp/fstrace-test-dir/dir0\n"
 
-      "R? /tmp/fstrace-test-dir/file0\n"
-      "RX /tmp/fstrace-test-dir/does-not-exist\n"
-      "R? /tmp/fstrace-test-dir/dir0/\n"
-      "R? /tmp/fstrace-test-dir/dir0\n"
+      // "R? /tmp/fstrace-test-dir/file0\n"
+      // "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      // "R? /tmp/fstrace-test-dir/dir0/\n"
+      // "R? /tmp/fstrace-test-dir/dir0\n"
 
-      "R? /tmp/fstrace-test-dir/file0\n"
-      "RX /tmp/fstrace-test-dir/does-not-exist\n"
-      "R? /tmp/fstrace-test-dir/dir0/\n"
-      "R? /tmp/fstrace-test-dir/dir0\n"
+      // "R? /tmp/fstrace-test-dir/file0\n"
+      // "RX /tmp/fstrace-test-dir/does-not-exist\n"
+      // "R? /tmp/fstrace-test-dir/dir0/\n"
+      // "R? /tmp/fstrace-test-dir/dir0\n"
 
       ,
       trimmed_output.c_str());
