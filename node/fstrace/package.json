@@ -1,6 +1,6 @@
 {
   "name": "fstrace",
-  "version": "0.0.27-ignore-statx",
+  "version": "0.0.27-ignore-statx.1",
   "license": "MIT",
   "repository": {
     "type": "git",
