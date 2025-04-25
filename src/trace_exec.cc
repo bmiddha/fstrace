@@ -114,12 +114,8 @@ int prepare_tracee()
       // BPF_JMP + BPF_JSET + BPF_K: pc += (A & k) ? jt : jf
       // BPF_RET + BPF_K = return constant
       BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
-      // BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_statx, 7, 0),      // flags arg[2]
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat, 6, 0),     // flags arg[2]
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlinkat, 5, 0),   // flags arg[2]
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_faccessat, 6, 0),  // flags arg[3]
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_faccessat2, 5, 0), // flags arg[3]
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_newfstatat, 4, 0), // flags arg[3]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat, 3, 0),     // flags arg[2]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlinkat, 2, 0),   // flags arg[2]
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execveat, 5, 0),   // flags arg[4]
       BPF_JUMP(BPF_JMP + BPF_JA + BPF_K, 8, 0, 0),
       BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, args[2])),
@@ -131,25 +127,20 @@ int prepare_tracee()
       BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
       BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
 
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_close, 26, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_open, 25, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_creat, 24, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat2, 23, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_readlink, 22, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_readlinkat, 21, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_lstat, 20, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_stat, 19, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_access, 18, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_fchdir, 17, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_chdir, 16, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execve, 15, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlink, 14, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rmdir, 13, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rename, 12, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat, 11, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat2, 10, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_getdents, 9, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_getdents64, 8, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_close, 19, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_open, 18, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_creat, 17, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat2, 16, 0),
+
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_fchdir, 15, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_chdir, 14, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execve, 13, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlink, 12, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rmdir, 11, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rename, 10, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat, 9, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat2, 8, 0),
+
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_symlinkat, 7, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_linkat, 6, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_link, 5, 0),
