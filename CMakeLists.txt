@@ -18,7 +18,14 @@ endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic -Wimplicit-fallthrough)
 
-# Build fstrace
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY "https://github.com/google/googletest"
+  GIT_TAG "v1.16.0"
+)
+FetchContent_MakeAvailable(googletest)
+
 add_executable(fstrace src/fstrace.cc)
 
 set(DEBUG_FD 4)
@@ -40,20 +47,13 @@ add_custom_command(
         ${PROJECT_SOURCE_DIR}/node/fstrace/$<TARGET_FILE_NAME:fstrace>
 )
 
+enable_testing()
+
 include(CTest)
+
 add_test(NAME exit-code-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/exit-code-passthrough.sh)
 add_test(NAME signal-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/signal-passthrough.sh)
 
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/b514bdc898e2951020cbdca1304b75f5950d1f59.zip # v1.15.2
-)
-
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
-
-enable_testing()
 
 add_executable(
   syscall-tests

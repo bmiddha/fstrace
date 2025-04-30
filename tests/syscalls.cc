@@ -30,6 +30,10 @@ template <typename... Args> std::string trace_testfn(void (*testfn)(Args...), Ar
 
   // this is a modified version of trace_exec() which instead skips running execve()
   // run tracer and forward fd3 to the pipe, so that we can verify the output
+
+  init_options();
+  signal(SIGUSR1, signal_handler_sigusr1);
+
   pid_t tracer_pid = fork();
   if (tracer_pid == 0)
   {
@@ -757,7 +761,8 @@ TEST(SyscallTestSuite, Exec6)
 void testfn_readlink()
 {
   syscall(__NR_chdir, tempdir);
-  int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, tempdir, O_RDONLY | O_DIRECTORY);
+  // int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
   char buf[PATH_MAX];
 
   // __NR_readlink absolute path
@@ -1269,6 +1274,7 @@ void testfn_filtering()
 TEST(SyscallTestSuite, Filtering)
 {
   setup();
+  setenv("FSTRACE_NEGATIVE_FILTER_PREFIX", "/proc", 1);
   std::string output = trace_testfn(testfn_filtering);
   std::string trimmed_output = filter_output(output);
   EXPECT_STREQ(
@@ -1276,6 +1282,7 @@ TEST(SyscallTestSuite, Filtering)
       "RD /tmp/fstrace-test-dir\n",
 
       trimmed_output.c_str());
+  unsetenv("FSTRACE_NEGATIVE_FILTER_PREFIX");
 }
 
 void testfn_truncate()

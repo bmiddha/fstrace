@@ -30,6 +30,35 @@ File access reports are printed to file descriptor 3 in the following format:
 - `<access_type>`: `R` for read, `W` for write/create, `D` for delete, `E` for enumerate
 - `<file_type>`: `F` for file, `D` for directory, `X` for does not exist
 
+## Options
+
+### `FSTRACE_DEBOUNCE` (Default=`0`)
+Debounce file access events. Send `SIGUSR1` to flush the debounce cache.
+
+### Filters
+
+Filter logic
+
+```
+if FSTRACE_NEGATIVE_FILTER_PREFIX
+  IGNORE
+if FSTRACE_NEGATIVE_FILTER_SUBSTRING
+  IGNORE
+if FSTRACE_FILTER_PREFIX
+  ALLOW
+if FSTRACE_FILTER_SUBSTRING
+  ALLOW
+
+default
+  IGNORE
+```
+
+Multiple paths can be specified by separating them with a colon `:`.
+- `FSTRACE_FILTER_PREFIX`: Only allow paths that start with this prefix. Defaults to `/`.
+- `FSTRACE_FILTER_SUBSTRING`: Only allow paths that contain this substring.
+- `FSTRACE_NEGATIVE_FILTER_PREFIX`: Ignore paths that start with this prefix.
+- `FSTRACE_NEGATIVE_FILTER_SUBSTRING`: Ignore paths that contain this substring.
+
 ## Installing
 
 ```sh

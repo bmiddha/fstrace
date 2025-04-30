@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <sys/ptrace.h>
 #include <linux/limits.h>
@@ -13,15 +14,17 @@
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <signal.h>
 #include <sys/time.h>
 #include <linux/types.h>
 #include <map>
+#include <unordered_set>
+#include <string>
 #include <stddef.h>
 #include <sys/reg.h>
 #include <sys/prctl.h>
 #include <linux/filter.h>
 #include <linux/seccomp.h>
+#include <vector>
 
 #ifndef DEBUGFD
 #define DEBUGFD 1
@@ -114,13 +117,11 @@ int prepare_tracee()
       // BPF_JMP + BPF_JSET + BPF_K: pc += (A & k) ? jt : jf
       // BPF_RET + BPF_K = return constant
       BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat, 3, 0),     // flags arg[2]
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlinkat, 2, 0),   // flags arg[2]
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execveat, 5, 0),   // flags arg[4]
-      BPF_JUMP(BPF_JMP + BPF_JA + BPF_K, 8, 0, 0),
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat, 3, 0),   // flags arg[2]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlinkat, 2, 0), // flags arg[2]
+      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execveat, 3, 0), // flags arg[4]
+      BPF_JUMP(BPF_JMP + BPF_JA + BPF_K, 6, 0, 0),
       BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, args[2])),
-      BPF_JUMP(BPF_JMP + BPF_JSET + BPF_K, AT_EMPTY_PATH, 4, 5),
-      BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, args[3])),
       BPF_JUMP(BPF_JMP + BPF_JSET + BPF_K, AT_EMPTY_PATH, 2, 3),
       BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, args[4])),
       BPF_JUMP(BPF_JMP + BPF_JSET + BPF_K, AT_EMPTY_PATH, 0, 1),
@@ -131,7 +132,6 @@ int prepare_tracee()
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_open, 18, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_creat, 17, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat2, 16, 0),
-
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_fchdir, 15, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_chdir, 14, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execve, 13, 0),
@@ -140,7 +140,6 @@ int prepare_tracee()
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rename, 10, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat, 9, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat2, 8, 0),
-
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_symlinkat, 7, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_linkat, 6, 0),
       BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_link, 5, 0),
@@ -561,6 +560,134 @@ int read_cmdline(pid_t pid, char *cmdline)
   return 0;
 }
 
+bool enable_debounce = false;
+
+std::vector<std::string> filter_prefixes;
+std::vector<std::string> negative_filter_prefixes;
+std::vector<std::string> filter_substrings;
+std::vector<std::string> negative_filter_substrings;
+
+void init_options()
+{
+
+#define PARSE_ENV_FILTER(env_var, container)                                                                           \
+  {                                                                                                                    \
+    char *value = getenv(env_var);                                                                                     \
+    if (value != NULL)                                                                                                 \
+    {                                                                                                                  \
+      char *token = strtok(value, ":");                                                                                \
+      while (token != NULL)                                                                                            \
+      {                                                                                                                \
+        container.push_back(std::string(token));                                                                       \
+        token = strtok(NULL, ":");                                                                                     \
+      }                                                                                                                \
+    }                                                                                                                  \
+  }
+
+  PARSE_ENV_FILTER("FSTRACE_FILTER_PREFIX", filter_prefixes);
+  PARSE_ENV_FILTER("FSTRACE_NEGATIVE_FILTER_PREFIX", negative_filter_prefixes);
+  PARSE_ENV_FILTER("FSTRACE_FILTER_SUBSTRING", filter_substrings);
+  PARSE_ENV_FILTER("FSTRACE_NEGATIVE_FILTER_SUBSTRING", negative_filter_substrings);
+
+  if (filter_prefixes.size() == 0)
+  {
+    filter_prefixes.push_back("/");
+    LOG_DEBUG("init_options(): no FSTRACE_FILTER_PREFIX set. defaulting to /")
+  }
+
+  char *debounce = getenv("FSTRACE_DEBOUNCE");
+  if (debounce != NULL)
+  {
+    enable_debounce = debounce[0] == '1' ? true : false;
+  }
+  LOG_DEBUG("init_options(): enable_debounce: %c", enable_debounce)
+}
+
+std::unordered_set<std::string> debounce_set;
+
+void flush_debounce_set()
+{
+  LOG_DEBUG("flush_debounce_set: %zu", debounce_set.size())
+  for (auto it = debounce_set.begin(); it != debounce_set.end();)
+  {
+    auto next_it = std::next(it);
+    debounce_set.erase(it);
+    it = next_it;
+  }
+}
+
+void signal_handler_sigusr1(int signum)
+{
+  if (signum == SIGUSR1)
+  {
+    LOG_DEBUG("SIGUSR1 received. Flushing debounce set")
+    flush_debounce_set();
+  }
+}
+
+bool debunce_log_access(char access_type, char file_type, char *path)
+{
+  if (enable_debounce)
+  {
+    return false;
+  }
+  std::string key = std::string(path) + access_type + file_type;
+  if (debounce_set.find(key) != debounce_set.end())
+  {
+    LOG_DEBUG("debunce_log_access: %s %c %c already exists", path, access_type, file_type)
+    return true;
+  }
+  else
+  {
+    LOG_DEBUG("debunce_log_access: %s %c %c not exists", path, access_type, file_type)
+    debounce_set.insert(key);
+  }
+  return true;
+}
+
+bool is_path_interesting(char *path)
+{
+  std::string path_str(path);
+
+  for (auto &prefix : negative_filter_prefixes)
+  {
+    if (path_str.find(prefix) == 0)
+    {
+      LOG_DEBUG("is_path_interesting: %s negative filter prefix %s", path, prefix.c_str())
+      return false;
+    }
+  }
+
+  for (auto &prefix : negative_filter_substrings)
+  {
+    if (path_str.find(prefix) != std::string::npos)
+    {
+      LOG_DEBUG("is_path_interesting: %s negative filter substring %s", path, prefix.c_str())
+      return false;
+    }
+  }
+
+  for (auto &prefix : filter_prefixes)
+  {
+    if (path_str.find(prefix) == 0)
+    {
+      LOG_DEBUG("is_path_interesting: %s filter prefix %s", path, prefix.c_str())
+      return true;
+    }
+  }
+
+  for (auto &prefix : filter_substrings)
+  {
+    if (path_str.find(prefix) != std::string::npos)
+    {
+      LOG_DEBUG("is_path_interesting: %s filter substring %s", path, prefix.c_str())
+      return true;
+    }
+  }
+
+  return false;
+}
+
 int run_tracer(pid_t child_pid)
 {
   initial_pid = child_pid;
@@ -616,19 +743,15 @@ int run_tracer(pid_t child_pid)
     return -1;                                                                                                         \
   }
 
-#define PATH_FILTER(path)                                                                                              \
-  path[0] == '\0' || path[0] != '/' /* filter pipe:[], socket:[] */ || strncmp(path, "/proc/", 6) == 0 ||              \
-      strncmp(path, "/dev/", 5) == 0 || strstr(path, "/.pnpm/") != NULL
-
-#define SYS_ENTER_PATH_FITLER(path)                                                                                    \
-  if (PATH_FILTER(path))                                                                                               \
+#define SYS_ENTER_PATH_FILTER(path)                                                                                    \
+  if (is_path_interesting(path))                                                                                       \
   {                                                                                                                    \
-    LOG_DEBUG("[PID: %d] SYS_ENTER_PATH_FITLER: continue. uninteresting path %s", child_pid, path)                     \
-    CONTINUE_AND_SKIP_SYS_EXIT                                                                                         \
+    CONTINUE_TO_SYS_EXIT                                                                                               \
   }                                                                                                                    \
   else                                                                                                                 \
   {                                                                                                                    \
-    CONTINUE_TO_SYS_EXIT                                                                                               \
+    LOG_DEBUG("[PID: %d] SYS_ENTER_PATH_FILTER: continue. uninteresting path %s", child_pid, path)                     \
+    CONTINUE_AND_SKIP_SYS_EXIT                                                                                         \
   }
 
   for (;;)
@@ -720,21 +843,21 @@ int run_tracer(pid_t child_pid)
         case __NR_chdir:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_chdir.path, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_chdir.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_chdir.path)
           break;
         }
         // int fchdir(int fd);
         case __NR_fchdir:
         {
           get_fd_path(child_pid, thread_op->fd_cache, arg0, thread_op->op_chdir.path);
-          SYS_ENTER_PATH_FITLER(thread_op->op_chdir.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_chdir.path)
           break;
         }
         // int execve(const char *pathname, char *const argv[], char *const envp[]);
         case __NR_execve:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_exec.path, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_exec.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_exec.path)
           break;
         }
         // int execveat(int dirfd, const char *pathname, char *const argv[], char *const envp[], int flags);
@@ -742,7 +865,7 @@ int run_tracer(pid_t child_pid)
         {
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg4,
                                                                  arg0, arg1, thread_op->op_exec.path, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_exec.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_exec.path)
           break;
         }
         // int open(const char *pathname, int flags);
@@ -751,7 +874,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_open.path, PATH_MAX);
           thread_op->op_open.flags = arg1;
-          SYS_ENTER_PATH_FITLER(thread_op->op_open.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_open.path)
           break;
         }
         // int creat(const char *pathname, mode_t mode);
@@ -759,7 +882,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_open.path, PATH_MAX);
           thread_op->op_open.flags = O_CREAT;
-          SYS_ENTER_PATH_FITLER(thread_op->op_open.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_open.path)
           break;
         }
         // int openat(int dirfd, const char *pathname, int flags);
@@ -769,7 +892,7 @@ int run_tracer(pid_t child_pid)
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg2,
                                                                  arg0, arg1, thread_op->op_open.path, PATH_MAX);
           thread_op->op_open.flags = arg2;
-          SYS_ENTER_PATH_FITLER(thread_op->op_open.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_open.path)
           break;
         }
         // int openat2(int dirfd, const char *pathname, struct open_how *how, size_t size);
@@ -780,7 +903,7 @@ int run_tracer(pid_t child_pid)
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, flags,
                                                                  arg0, arg1, thread_op->op_open.path, PATH_MAX);
           thread_op->op_open.flags = flags;
-          SYS_ENTER_PATH_FITLER(thread_op->op_open.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_open.path)
           break;
         }
         // ssize_t readlink(const char *pathname, char *buf, size_t bufsiz);
@@ -788,7 +911,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_readlink.path,
                                                    PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_open.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_open.path)
           break;
         }
         // ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t bufsiz);
@@ -796,7 +919,7 @@ int run_tracer(pid_t child_pid)
         {
           parse_at_syscall_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg0, arg1,
                                                       thread_op->op_readlink.path, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_readlink.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_readlink.path)
           break;
         }
         // int lstat(const char *pathname, struct stat *statbuf);
@@ -806,7 +929,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_stat.path, PATH_MAX);
           thread_op->op_stat.statbuf = (struct stat *)arg1;
-          SYS_ENTER_PATH_FITLER(thread_op->op_stat.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_stat.path)
           break;
         }
         // int statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf);
@@ -815,7 +938,7 @@ int run_tracer(pid_t child_pid)
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg2,
                                                                  arg0, arg1, thread_op->op_statx.path, PATH_MAX);
           thread_op->op_statx.statxbuf = (struct statx *)arg4;
-          SYS_ENTER_PATH_FITLER(thread_op->op_statx.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_statx.path)
           break;
         }
         // int fstatat(int dirfd, const char *pathname, struct stat *statbuf, int flags);
@@ -824,7 +947,7 @@ int run_tracer(pid_t child_pid)
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg3,
                                                                  arg0, arg1, thread_op->op_stat.path, PATH_MAX);
           thread_op->op_stat.statbuf = (struct stat *)arg2;
-          SYS_ENTER_PATH_FITLER(thread_op->op_stat.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_stat.path)
           break;
         }
         // int faccessat(int dirfd, const char *pathname, int mode, int flags);
@@ -834,7 +957,7 @@ int run_tracer(pid_t child_pid)
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg3,
                                                                  arg0, arg1, thread_op->op_faccessat.path, PATH_MAX);
           thread_op->op_faccessat.flags = arg3;
-          SYS_ENTER_PATH_FITLER(thread_op->op_faccessat.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_faccessat.path)
           break;
         }
         // int access(const char *pathname, int mode);
@@ -842,7 +965,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_access.path,
                                                    PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_access.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_access.path)
           break;
         }
         // int unlinkat(int dirfd, const char *pathname, int flags);
@@ -850,7 +973,7 @@ int run_tracer(pid_t child_pid)
         {
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg2,
                                                                  arg0, arg1, thread_op->op_unlink.path, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_unlink.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_unlink.path)
           break;
         }
         // int unlink(const char *pathname);
@@ -858,7 +981,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_unlink.path,
                                                    PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_unlink.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_unlink.path)
           break;
         }
         // int rmdir(const char *pathname);
@@ -866,7 +989,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_unlink.path,
                                                    PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_unlink.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_unlink.path)
           break;
         }
         // int rename(const char *oldpath, const char *newpath);
@@ -876,7 +999,7 @@ int run_tracer(pid_t child_pid)
                                                    PATH_MAX);
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg1, thread_op->op_rename.newpath,
                                                    PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_rename.newpath)
+          SYS_ENTER_PATH_FILTER(thread_op->op_rename.newpath)
           break;
         }
         // int renameat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath);
@@ -887,7 +1010,7 @@ int run_tracer(pid_t child_pid)
                                                                  arg0, arg1, thread_op->op_rename.oldpath, PATH_MAX);
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg4,
                                                                  arg2, arg3, thread_op->op_rename.newpath, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_rename.newpath)
+          SYS_ENTER_PATH_FILTER(thread_op->op_rename.newpath)
           break;
         }
         case __NR_renameat:
@@ -897,7 +1020,7 @@ int run_tracer(pid_t child_pid)
 
           parse_at_syscall_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg2, arg3,
                                                       thread_op->op_rename.newpath, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_rename.newpath)
+          SYS_ENTER_PATH_FILTER(thread_op->op_rename.newpath)
           break;
         }
         // long getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
@@ -906,7 +1029,7 @@ int run_tracer(pid_t child_pid)
         case __NR_getdents64:
         {
           get_fd_path(child_pid, thread_op->fd_cache, arg0, thread_op->op_getdents.path);
-          SYS_ENTER_PATH_FITLER(thread_op->op_getdents.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_getdents.path)
           break;
         }
         // int symlink(const char *target, const char *linkpath);
@@ -914,7 +1037,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg1, thread_op->op_link.linkpath,
                                                    PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_link.linkpath)
+          SYS_ENTER_PATH_FILTER(thread_op->op_link.linkpath)
           break;
         }
         // int symlinkat(const char *target, int newdirfd, const char *linkpath);
@@ -922,7 +1045,7 @@ int run_tracer(pid_t child_pid)
         {
           parse_at_syscall_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg1, arg2,
                                                       thread_op->op_link.linkpath, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_link.linkpath)
+          SYS_ENTER_PATH_FILTER(thread_op->op_link.linkpath)
           break;
         }
         // int linkat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
@@ -930,7 +1053,7 @@ int run_tracer(pid_t child_pid)
         {
           parse_at_syscall_with_flags_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg4,
                                                                  arg2, arg3, thread_op->op_link.linkpath, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_link.linkpath)
+          SYS_ENTER_PATH_FILTER(thread_op->op_link.linkpath)
           break;
         }
         // int link(const char *oldpath, const char *newpath);
@@ -938,14 +1061,14 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg1, thread_op->op_link.linkpath,
                                                    PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_link.linkpath)
+          SYS_ENTER_PATH_FILTER(thread_op->op_link.linkpath)
           break;
         }
         // int mkdir(const char *pathname, mode_t mode);
         case __NR_mkdir:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_mkdir.path, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_mkdir.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_mkdir.path)
           break;
         }
         // int mkdirat(int dirfd, const char *pathname, mode_t mode);
@@ -953,7 +1076,7 @@ int run_tracer(pid_t child_pid)
         {
           parse_at_syscall_dirfd_pathname_from_tracee(child_pid, thread_op->fd_cache, thread_op->cwd, arg0, arg1,
                                                       thread_op->op_mkdir.path, PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_mkdir.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_mkdir.path)
           break;
         }
         // int truncate(const char *path, off_t length);
@@ -961,7 +1084,7 @@ int run_tracer(pid_t child_pid)
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_truncate.path,
                                                    PATH_MAX);
-          SYS_ENTER_PATH_FITLER(thread_op->op_truncate.path)
+          SYS_ENTER_PATH_FILTER(thread_op->op_truncate.path)
           break;
         }
         default:
@@ -993,16 +1116,22 @@ int run_tracer(pid_t child_pid)
 #if DEBUG
 #define LOG_ACCESS(comment, access_type, file_type, path)                                                              \
   normalize_path(path);                                                                                                \
-  gettimeofday(&end_time, NULL);                                                                                       \
-  time_spent_usec =                                                                                                    \
-      (end_time.tv_sec - thread_op->start_time.tv_sec) * 1000000 + (end_time.tv_usec - thread_op->start_time.tv_usec); \
-  dprintf(3, "%c%c %s\n", access_type, file_type, path);                                                               \
-  LOG_DEBUG("[PID: %d] # %s (time_spent_usec: %ld)", child_pid, #comment, time_spent_usec)                             \
-  LOG_DEBUG("[PID: %d] %c%c %s", child_pid, access_type, file_type, path)
+  if (debunce_log_access(access_type, file_type, path))                                                                \
+  {                                                                                                                    \
+    gettimeofday(&end_time, NULL);                                                                                     \
+    time_spent_usec = (end_time.tv_sec - thread_op->start_time.tv_sec) * 1000000 +                                     \
+                      (end_time.tv_usec - thread_op->start_time.tv_usec);                                              \
+    dprintf(3, "%c%c %s\n", access_type, file_type, path);                                                             \
+    LOG_DEBUG("[PID: %d] # %s (time_spent_usec: %ld)", child_pid, #comment, time_spent_usec)                           \
+    LOG_DEBUG("[PID: %d] %c%c %s", child_pid, access_type, file_type, path)                                            \
+  }
 #else
 #define LOG_ACCESS(comment, access_type, file_type, path)                                                              \
   normalize_path(path);                                                                                                \
-  dprintf(3, "%c%c %s\n", access_type, file_type, path);
+  if (debunce_log_access(access_type, file_type, path))                                                                \
+  {                                                                                                                    \
+    dprintf(3, "%c%c %s\n", access_type, file_type, path);                                                             \
+  }
 #endif
 
 #define CONTINUE_TRACEE                                                                                                \
@@ -1461,6 +1590,23 @@ int run_tracer(pid_t child_pid)
       {
         return -1;
       }
+
+      // struct pid_info *thread_op;
+      // thread_op = &pid_info_map[child_pid];
+      //   if (is_path_interesting(thread_op->op_exec.path))
+      //   {
+      //     if (ptrace_syscall(child_pid, WSTOPSIG(status)) != 0)
+      //     {
+      //       return -1;
+      //     }
+      //   }
+      //   else
+      //   {
+      //     if (ptrace_cont(child_pid, WSTOPSIG(status)) != 0)
+      //     {
+      //       return -1;
+      //     }
+      //   }
     }
     else if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXIT << 8)))
     {
@@ -1537,6 +1683,9 @@ int exec_tracee(char *program, char **args)
 
 int trace_exec(char *program, char **args)
 {
+  init_options();
+  signal(SIGUSR1, signal_handler_sigusr1);
+
   pid_t child_pid = fork();
 
   if (child_pid == 0)
