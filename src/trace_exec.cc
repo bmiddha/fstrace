@@ -600,7 +600,7 @@ void init_options()
   {
     enable_debounce = debounce[0] == '1' ? true : false;
   }
-  LOG_DEBUG("init_options(): enable_debounce: %c", enable_debounce)
+  LOG_DEBUG("init_options(): enable_debounce: %c", enable_debounce ? '1' : '0')
 }
 
 std::unordered_set<std::string> debounce_set;
@@ -625,24 +625,24 @@ void signal_handler_sigusr1(int signum)
   }
 }
 
-bool debunce_log_access(char access_type, char file_type, char *path)
+bool debounce_log_access(char access_type, char file_type, char *path)
 {
-  if (enable_debounce)
+  if (!enable_debounce)
   {
-    return false;
+    return true;
   }
   std::string key = std::string(path) + access_type + file_type;
   if (debounce_set.find(key) != debounce_set.end())
   {
-    LOG_DEBUG("debunce_log_access: %s %c %c already exists", path, access_type, file_type)
-    return true;
+    LOG_DEBUG("debounce_log_access: %s %c %c already exists", path, access_type, file_type)
+    return false;
   }
   else
   {
-    LOG_DEBUG("debunce_log_access: %s %c %c not exists", path, access_type, file_type)
+    LOG_DEBUG("debounce_log_access: %s %c %c not exists", path, access_type, file_type)
     debounce_set.insert(key);
+    return true;
   }
-  return true;
 }
 
 bool is_path_interesting(char *path)
@@ -1116,19 +1116,19 @@ int run_tracer(pid_t child_pid)
 #if DEBUG
 #define LOG_ACCESS(comment, access_type, file_type, path)                                                              \
   normalize_path(path);                                                                                                \
-  if (debunce_log_access(access_type, file_type, path))                                                                \
+  gettimeofday(&end_time, NULL);                                                                                     \
+  time_spent_usec = (end_time.tv_sec - thread_op->start_time.tv_sec) * 1000000 +                                     \
+                    (end_time.tv_usec - thread_op->start_time.tv_usec);                                              \
+  LOG_DEBUG("[PID: %d] # %s (time_spent_usec: %ld)", child_pid, #comment, time_spent_usec)                           \
+  LOG_DEBUG("[PID: %d] %c%c %s", child_pid, access_type, file_type, path)                                            \
+  if (debounce_log_access(access_type, file_type, path))                                                                \
   {                                                                                                                    \
-    gettimeofday(&end_time, NULL);                                                                                     \
-    time_spent_usec = (end_time.tv_sec - thread_op->start_time.tv_sec) * 1000000 +                                     \
-                      (end_time.tv_usec - thread_op->start_time.tv_usec);                                              \
     dprintf(3, "%c%c %s\n", access_type, file_type, path);                                                             \
-    LOG_DEBUG("[PID: %d] # %s (time_spent_usec: %ld)", child_pid, #comment, time_spent_usec)                           \
-    LOG_DEBUG("[PID: %d] %c%c %s", child_pid, access_type, file_type, path)                                            \
   }
 #else
 #define LOG_ACCESS(comment, access_type, file_type, path)                                                              \
   normalize_path(path);                                                                                                \
-  if (debunce_log_access(access_type, file_type, path))                                                                \
+  if (debounce_log_access(access_type, file_type, path))                                                                \
   {                                                                                                                    \
     dprintf(3, "%c%c %s\n", access_type, file_type, path);                                                             \
   }
