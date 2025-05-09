@@ -58,6 +58,7 @@ Multiple paths can be specified by separating them with a colon `:`.
 - `FSTRACE_FILTER_SUBSTRING`: Only allow paths that contain this substring.
 - `FSTRACE_NEGATIVE_FILTER_PREFIX`: Ignore paths that start with this prefix.
 - `FSTRACE_NEGATIVE_FILTER_SUBSTRING`: Ignore paths that contain this substring.
+- `FSTRACE_DEBUG_FILE`: Print debug information to this file. Only works with `fstrace-debug` binary.
 
 ## Installing
 

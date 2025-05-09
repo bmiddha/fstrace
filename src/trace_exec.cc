@@ -561,6 +561,9 @@ int read_cmdline(pid_t pid, char *cmdline)
 }
 
 bool enable_debounce = false;
+#if DEBUG
+std::string debug_file_path;
+#endif
 
 std::vector<std::string> filter_prefixes;
 std::vector<std::string> negative_filter_prefixes;
@@ -569,6 +572,27 @@ std::vector<std::string> negative_filter_substrings;
 
 void init_options()
 {
+#if DEBUG
+  char *debug_file = getenv("FSTRACE_DEBUG_FILE");
+  if (debug_file != NULL)
+  {
+    debug_file_path = std::string(debug_file);
+    int fd = open(debug_file_path.c_str(), O_WRONLY | O_APPEND | O_CREAT, 0644);
+    if (fd == -1)
+    {
+      fprintf(stderr, "Failed to open debug file: %s\n", debug_file_path.c_str());
+      exit(1);
+    }
+    if (dup2(fd, DEBUGFD) == -1)
+    {
+      fprintf(stderr, "Failed to duplicate file descriptor: %s\n", strerror(errno));
+      exit(1);
+    }
+
+    LOG_DEBUG("init_options(): FSTRACE_DEBUG_FILE: %s", debug_file_path.c_str())
+  }
+#endif
+
 
 #define PARSE_ENV_FILTER(env_var, container)                                                                           \
   {                                                                                                                    \
