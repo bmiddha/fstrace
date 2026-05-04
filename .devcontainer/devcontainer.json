@@ -1,7 +1,7 @@
 {
 	"image": "mcr.microsoft.com/devcontainers/cpp:1-ubuntu-24.04",
 	"features": {
-		"ghcr.io/devcontainers/features/node:1": {
+		"ghcr.io/devcontainers/features/node:2": {
 			"nodeGypDependencies": true,
 			"version": "18",
 			"pnpmVersion": "latest",
