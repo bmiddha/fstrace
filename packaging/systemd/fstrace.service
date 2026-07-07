@@ -1,0 +1,21 @@
+# The privileged fstrace daemon. Normally started on demand by fstrace.socket
+# (socket activation), so you do not enable this unit directly — enable the
+# socket instead:
+#   systemctl enable --now fstrace.socket
+[Unit]
+Description=fstrace eBPF daemon
+Requires=fstrace.socket
+After=fstrace.socket
+
+[Service]
+# Adjust the path to wherever fstrace-daemon is installed.
+ExecStart=/usr/bin/fstrace-daemon
+Restart=on-failure
+# Loading the eBPF programs requires these capabilities (running as root, the
+# default here, already grants them; listed for documentation / hardening).
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN
+
+[Install]
+# The socket pulls the service in; installing the service too lets it start at
+# boot even without a first connection, if you prefer that.
+WantedBy=multi-user.target

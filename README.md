@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/bmiddha/fstrace/actions/workflows/ci.yml/badge.svg)](https://github.com/bmiddha/fstrace/actions/workflows/ci.yml)
 
-fstrace uses `ptrace` to check file system accesses of a program.
+fstrace uses [eBPF](https://ebpf.io/) (via [Aya](https://aya-rs.dev/)) to check file system accesses of a program.
 
 ```bash
 fstrace touch /tmp/foo 3>&1
@@ -19,70 +19,44 @@ RF /lib/x86_64-linux-gnu/libc.so.6
 WF /tmp/foo
 ```
 
-## Output format
+Each line is `<access_type><file_type> <file_path>` — see
+[Output format](docs/output-format.md) for the full legend.
 
-File access reports are printed to file descriptor 3 in the following format:
-
-```
-<access_type><file_type> <file_path>
-```
-
-- `<access_type>`: `R` for read, `W` for write/create, `D` for delete, `E` for enumerate
-- `<file_type>`: `F` for file, `D` for directory, `X` for does not exist
-
-## Options
-
-### `FSTRACE_DEBOUNCE` (Default=`0`)
-Debounce file access events. Send `SIGUSR1` to flush the debounce cache.
-
-### Filters
-
-Filter logic
-
-```
-if FSTRACE_NEGATIVE_FILTER_PREFIX
-  IGNORE
-if FSTRACE_NEGATIVE_FILTER_SUBSTRING
-  IGNORE
-if FSTRACE_FILTER_PREFIX
-  ALLOW
-if FSTRACE_FILTER_SUBSTRING
-  ALLOW
-
-default
-  IGNORE
-```
-
-Multiple paths can be specified by separating them with a colon `:`.
-- `FSTRACE_FILTER_PREFIX`: Only allow paths that start with this prefix. Defaults to `/`.
-- `FSTRACE_FILTER_SUBSTRING`: Only allow paths that contain this substring.
-- `FSTRACE_NEGATIVE_FILTER_PREFIX`: Ignore paths that start with this prefix.
-- `FSTRACE_NEGATIVE_FILTER_SUBSTRING`: Ignore paths that contain this substring.
-- `FSTRACE_DEBUG_FILE`: Print debug information to this file. Only works with `fstrace-debug` binary.
-
-## Installing
+## Install
 
 ```sh
 npm i -g fstrace
 ```
 
-## Building from source
+Or [build from source](docs/building.md).
 
-Prerequisites
+## Quick start
 
-- [CMake](https://cmake.org/)
-
-
-```bash
-cmake -S. -B ./build -DCMAKE_BUILD_TYPE=Release
-cmake --build ./build --target all
-cmake --build ./build --target test
-build/fstrace bash -c 'echo "foo" >> /tmp/foo' 3>&1
-```
+fstrace is split into a privileged **`fstrace-daemon`** (loads eBPF, runs once as
+root) and an unprivileged **`fstrace`** client (traces your commands without
+`sudo`). Start the daemon once, then trace freely:
 
 ```bash
-cmake -S. -B ./build -DCMAKE_BUILD_TYPE=Debug
-cmake --build ./build --target all
-cmake --build ./build --target test
-build/fstrace-debug bash -c 'echo "foo" >> /tmp/foo' 3>&1
+sudo fstrace-daemon &                             # one-time, privileged
+fstrace bash -c 'echo foo >> /tmp/foo' 3>&1       # unprivileged
 ```
+
+Reports go to **file descriptor 3**; redirect it with `3>&1` (stdout) or
+`3>reports.txt`. See [Reports and file descriptor 3](docs/reports-and-fd3.md).
+
+## Documentation
+
+- [Output format](docs/output-format.md) — how to read reports.
+- [Configuration](docs/configuration.md) — filters, debounce, and the
+  environment-variable reference.
+- [Logging (`RUST_LOG`)](docs/logging.md) — verbosity control and logging to files.
+- [Reports and file descriptor 3](docs/reports-and-fd3.md) — the report stream
+  and running under `sudo`.
+- [Architecture: the fstrace daemon](docs/architecture.md) — the daemon/client
+  split, systemd units, and socket activation.
+- [Deployment](docs/deployment.md) — Docker/OCI containers, SysV/OpenRC init
+  scripts, and other supervisors.
+- [Building from source](docs/building.md) — prerequisites and build steps.
+- [Testing](docs/testing.md) — unit tests and the end-to-end VM/container suites.
+- [Kernel version support](docs/kernel-support.md) — the minimum kernel, the
+  verified LTS/stable/mainline matrix, and how to run it.

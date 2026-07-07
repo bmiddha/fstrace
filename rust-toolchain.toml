@@ -1,0 +1,6 @@
+# The eBPF crate is compiled to the `bpfel-unknown-none` target using
+# `-Z build-std`, which requires a nightly toolchain with the `rust-src`
+# component. Pinning nightly for the whole workspace keeps builds reproducible.
+[toolchain]
+channel = "nightly"
+components = ["rust-src", "rustfmt", "clippy"]

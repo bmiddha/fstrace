@@ -1,0 +1,24 @@
+[package]
+name = "fstrace-ebpf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints.rust]
+# `bpf_target_arch` is a custom cfg injected by aya-build when compiling the
+# eBPF object; declare its known values so rustc's check-cfg lint stays quiet.
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(bpf_target_arch, values("x86_64", "aarch64", "arm", "riscv64", "powerpc64", "s390x", "mips", "loongarch64"))',
+] }
+
+[dependencies]
+fstrace-common = { path = "../fstrace-common" }
+
+aya-ebpf = { workspace = true }
+
+[build-dependencies]
+which = { workspace = true }
+
+[[bin]]
+name = "fstrace"
+path = "src/main.rs"

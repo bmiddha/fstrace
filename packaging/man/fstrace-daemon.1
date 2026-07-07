@@ -1,0 +1,125 @@
+.TH FSTRACE-DAEMON 1 "2026-07-06" "fstrace 0.1.0" "User Commands"
+.SH NAME
+fstrace-daemon \- privileged eBPF daemon for fstrace
+.SH SYNOPSIS
+.B fstrace-daemon
+.RB [ \-\-socket
+.IR PATH ]
+.br
+.B fstrace-daemon
+.RB [ -h | --help ]
+.RB [ -V | --version ]
+.SH DESCRIPTION
+.B fstrace-daemon
+is the privileged half of
+.BR fstrace (1).
+It loads and attaches the eBPF programs once, owns the kernel ring buffer and
+the traced\-pid map, and serves multiple unprivileged
+.BR fstrace (1)
+clients over a Unix socket.
+.PP
+Each client registers the pid of its stopped child; the daemon starts tracing
+that pid and streams the resulting kernel events \(em and those of the child's
+descendants \(em back to the owning client. It routes events by their
+root\-namespace pid and never inspects
+.IR /proc ,
+so it remains correct even when run in a different pid and mount namespace than
+its clients (for example, containerized with the socket bind\-mounted to the
+host).
+.PP
+This is the only component that requires elevated privileges
+.RB ( CAP_BPF
+and
+.BR CAP_PERFMON ,
+or
+.BR CAP_SYS_ADMIN );
+the
+.BR fstrace (1)
+client runs as an ordinary user. The daemon runs in the foreground until
+killed; use a service manager, or background it, to keep it running.
+.SH OPTIONS
+.TP
+.BI \-\-socket " PATH"
+Listen on the Unix socket
+.IR PATH .
+Overrides
+.BR FSTRACE_SOCKET .
+Defaults to
+.BR /run/fstrace/fstrace.sock .
+.TP
+.BR \-h ", " \-\-help
+Print a help message and exit.
+.TP
+.BR \-V ", " \-\-version
+Print version information and exit.
+.SH SOCKET ACTIVATION
+The daemon implements the systemd
+.BR sd_listen_fds (3)
+protocol. If launched via socket activation \(em with
+.B LISTEN_FDS
+and
+.B LISTEN_PID
+set \(em it adopts the listening socket systemd already bound and passed to it;
+otherwise it binds the socket itself. Ready\-to\-use
+.B fstrace.socket
+and
+.B fstrace.service
+units, an init script, and a container image ship under
+.IR packaging/ .
+.SH ENVIRONMENT
+.TP
+.B FSTRACE_SOCKET
+Socket path to bind (default
+.BR /run/fstrace/fstrace.sock ).
+The
+.B \-\-socket
+option takes precedence. Must match the clients.
+.TP
+.BR FSTRACE_LOG_FILE ", " FSTRACE_LOG_DIR
+Write log output to an explicit file, or to a per\-process file
+.RI ( fstrace-daemon.log )
+under a directory, respectively.
+.TP
+.B RUST_LOG
+Log verbosity using
+.BR tracing / env\-filter
+syntax, e.g.
+.BR fstrace=trace .
+.B FSTRACE_DEBUG=1
+is shorthand for
+.BR fstrace=debug .
+.SH EXIT STATUS
+Runs until killed. Exits
+.B 0
+on a clean shutdown and
+.B 1
+on a fatal startup error (for example, if the eBPF programs cannot be loaded),
+printing a diagnostic to standard error. Exits
+.B 2
+on an invalid command line.
+.SH EXAMPLES
+Start the daemon (backgrounded) and then trace without
+.BR sudo :
+.PP
+.RS
+.B sudo fstrace-daemon &
+.br
+.B fstrace ls 3>&1
+.RE
+.PP
+Run a private daemon on a custom socket:
+.PP
+.RS
+.B sudo fstrace-daemon --socket /tmp/fst.sock &
+.br
+.B FSTRACE_SOCKET=/tmp/fst.sock fstrace ls 3>&1
+.RE
+.SH SEE ALSO
+.BR fstrace (1),
+.BR sd_listen_fds (3)
+.PP
+Project documentation:
+.UR https://github.com/bmiddha/fstrace
+.UE
+.SH AUTHOR
+Bharat Middha and contributors.

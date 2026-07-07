@@ -1,0 +1,33 @@
+# Pipeline: run the reusable kernel-maintenance agent workflow on a schedule.
+#
+# Upstream cuts a new mainline -rc most Sundays and ships stable/longterm point
+# releases every week or two, so a weekly check keeps the tested matrix current.
+# The reusable workflow is idempotent: it skips itself when a kernel-maintenance
+# issue is already open, so overlapping runs never stack up duplicate tasks.
+#
+# Runs can also be started manually from the Actions tab (workflow_dispatch),
+# including a dry run that files the task issue without assigning the agent.
+name: kernel-maintenance-cron
+
+on:
+  schedule:
+    # 06:00 UTC every Monday.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compose the task issue but do not assign the Copilot agent."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  maintain:
+    name: 🗓️ Scheduled kernel maintenance
+    uses: ./.github/workflows/kernel-maintenance.yml
+    with:
+      dry_run: ${{ inputs.dry_run == true }}
+    secrets: inherit

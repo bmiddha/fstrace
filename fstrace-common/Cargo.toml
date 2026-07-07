@@ -1,0 +1,19 @@
+[package]
+name = "fstrace-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# Enables `aya::Pod` implementations so the userspace crate can read events
+# straight out of the ring buffer.
+user = ["aya"]
+
+[dependencies]
+aya = { workspace = true, optional = true }
+
+[lib]
+path = "src/lib.rs"

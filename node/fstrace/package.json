@@ -1,6 +1,6 @@
 {
   "name": "fstrace",
-  "version": "0.0.31",
+  "version": "0.0.30",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,25 +14,27 @@
     "linux"
   ],
   "cpu": [
-    "x64",
-    "arm64"
+    "x64"
   ],
   "libc": [
     "glibc"
   ],
   "files": [
     "fstrace",
-    "fstrace-debug",
-    "bin/x64/",
-    "bin/arm64/",
+    "fstrace-daemon",
+    "fstrace.1",
+    "fstrace-daemon.1",
     "README.md"
+  ],
+  "man": [
+    "fstrace.1",
+    "fstrace-daemon.1"
   ],
   "bin": {
     "fstrace": "fstrace",
-    "fstrace-debug": "fstrace-debug"
+    "fstrace-daemon": "fstrace-daemon"
   },
   "scripts": {
-    "prepare": "cp ../../README.md .",
-    "prepack": "node verify-package.cjs"
+    "prepare": "cp ../../README.md . && cp ../../packaging/man/fstrace.1 ../../packaging/man/fstrace-daemon.1 ."
   }
 }
