@@ -1,0 +1,110 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          fstrace
+# Required-Start:    $local_fs
+# Required-Stop:     $local_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: fstrace eBPF daemon
+# Description:       Privileged fstrace daemon. Loads the eBPF programs and
+#                    serves unprivileged fstrace clients over a Unix socket.
+### END INIT INFO
+
+# SysV init / OpenRC script for the fstrace daemon. Install as
+# /etc/init.d/fstrace (chmod +x), then enable it:
+#   Debian:  update-rc.d fstrace defaults
+#   OpenRC:  rc-update add fstrace default
+#
+# Override any of the variables below in /etc/default/fstrace, e.g. to point the
+# daemon and its clients at a non-default socket:
+#   FSTRACE_SOCKET=/var/run/fstrace.sock
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+NAME=fstrace
+DESC="fstrace eBPF daemon"
+DAEMON=/usr/bin/fstrace-daemon
+DAEMON_ARGS=
+RUNDIR=/run/fstrace
+PIDFILE=$RUNDIR/fstrace.pid
+# Must match the client's FSTRACE_SOCKET (default shown here).
+FSTRACE_SOCKET=/run/fstrace/fstrace.sock
+
+[ -r /etc/default/$NAME ] && . /etc/default/$NAME
+export FSTRACE_SOCKET
+
+[ -x "$DAEMON" ] || {
+    echo "$DESC: $DAEMON not found or not executable" >&2
+    exit 5
+}
+
+# Wait up to ~5s for the daemon to publish its listening socket.
+wait_for_socket() {
+    i=0
+    while [ "$i" -lt 50 ]; do
+        [ -S "$FSTRACE_SOCKET" ] && return 0
+        sleep 0.1
+        i=$((i + 1))
+    done
+    return 1
+}
+
+is_running() {
+    [ -f "$PIDFILE" ] || return 1
+    pid=$(cat "$PIDFILE" 2>/dev/null) || return 1
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+do_start() {
+    if is_running; then
+        echo "$DESC is already running (pid $(cat "$PIDFILE"))."
+        return 0
+    fi
+    mkdir -p "$RUNDIR"
+    # Clear a stale socket left by an unclean shutdown so bind() succeeds.
+    [ -S "$FSTRACE_SOCKET" ] && rm -f "$FSTRACE_SOCKET"
+    echo "Starting $DESC..."
+    start-stop-daemon --start --background --make-pidfile \
+        --pidfile "$PIDFILE" --exec "$DAEMON" -- $DAEMON_ARGS
+    if wait_for_socket; then
+        echo "$DESC started (socket $FSTRACE_SOCKET)."
+    else
+        echo "$DESC failed to create $FSTRACE_SOCKET." >&2
+        return 1
+    fi
+}
+
+do_stop() {
+    if ! is_running; then
+        echo "$DESC is not running."
+        rm -f "$PIDFILE"
+        return 0
+    fi
+    echo "Stopping $DESC..."
+    start-stop-daemon --stop --quiet --retry=TERM/10/KILL/5 --pidfile "$PIDFILE"
+    rm -f "$PIDFILE"
+    [ -S "$FSTRACE_SOCKET" ] && rm -f "$FSTRACE_SOCKET"
+    return 0
+}
+
+do_status() {
+    if is_running; then
+        echo "$DESC is running (pid $(cat "$PIDFILE"))."
+        return 0
+    fi
+    echo "$DESC is not running."
+    return 3
+}
+
+case "$1" in
+    start) do_start ;;
+    stop) do_stop ;;
+    restart | force-reload)
+        do_stop
+        do_start
+        ;;
+    status) do_status ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|force-reload|status}" >&2
+        exit 2
+        ;;
+esac

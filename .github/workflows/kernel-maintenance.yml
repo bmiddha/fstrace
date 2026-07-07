@@ -1,0 +1,197 @@
+# Reusable "agent" workflow: delegates kernel-version maintenance to the GitHub
+# Copilot coding agent.
+#
+# It files a task issue describing exactly what to update and assigns it to the
+# Copilot coding agent bot (`copilot-swe-agent`). The agent then does the work
+# on a branch and opens a pull request, which the normal `ci` workflow (the
+# 8-kernel x {ubuntu, alpine} vm-e2e matrix) validates.
+#
+# Trigger it directly (Actions tab -> "Run workflow"), or on a schedule via the
+# companion pipeline in `kernel-maintenance-cron.yml`.
+#
+# Auth note: assigning the coding agent works with the default GITHUB_TOKEN when
+# "Copilot coding agent" is enabled for the repository. If your org requires a
+# PAT to start the agent, add a `COPILOT_AGENT_TOKEN` secret (a fine-grained PAT
+# with `issues: write`); this workflow uses it when present and otherwise falls
+# back to GITHUB_TOKEN.
+name: kernel-maintenance
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: "Compose the task issue but do not assign the Copilot agent."
+        type: boolean
+        default: false
+    secrets:
+      COPILOT_AGENT_TOKEN:
+        description: "Optional PAT used to assign the Copilot coding agent."
+        required: false
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compose the task issue but do not assign the Copilot agent."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  delegate:
+    name: 🤖 Delegate kernel bump to Copilot
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+
+      - name: 🏷️ Ensure task label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create kernel-maintenance \
+            --color 0e8a16 \
+            --description "Automated kernel-version maintenance task" \
+            --force
+
+      - name: 🔁 Skip if a task is already open
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          open=$(gh issue list --state open --label kernel-maintenance \
+            --json number --jq 'length')
+          if [ "$open" -gt 0 ]; then
+            echo "An open kernel-maintenance issue already exists; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 📝 Compose the task prompt
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          cat > /tmp/kernel-task.md <<'PROMPT'
+          ## Task: refresh the tested kernel matrix
+
+          Keep fstrace's tested kernel set current with upstream. This is a
+          recurring maintenance task; make the smallest correct change and open a
+          PR. The existing `ci` workflow (the vm-e2e matrix) will validate every
+          kernel you list, so you do not need to boot VMs yourself.
+
+          ### Authoritative data sources
+          - `https://www.kernel.org/releases.json` — the source of truth for the
+            current `mainline`, `stable`, and `longterm` monikers and their
+            latest versions. Use this feed; do not guess versions.
+          - Every version you add **must** have a prebuilt image on the
+            [Ubuntu mainline archive](https://kernel.ubuntu.com/mainline/)
+            (that is where `xtask/src/kernel.rs` downloads bzImages from). Before
+            adding a version, confirm `https://kernel.ubuntu.com/mainline/v<VER>/`
+            exists and contains a `linux-image-unsigned-*-generic_*_amd64.deb`.
+
+          ### What to update (single source of truth first)
+          1. `xtask/src/vm.rs` — the `RELEASES` const. Each entry is
+             `{ name, version, moniker }`:
+             - **Latest mainline RC**: one entry, `moniker: "mainline"`,
+               `name: "<X.Y>-rc"`, `version: "<X.Y>-rc<N>"` (the newest RC).
+             - **Latest stable**: one entry, `moniker: "stable"`,
+               `name: "<X.Y>"`, `version: "<X.Y.Z>"`.
+             - **All active longterm lines**: one entry each,
+               `moniker: "LTS"`, `name: "<X.Y>"`, `version: "<X.Y.Z>"`, refreshed
+               to the newest point release. Add newly-promoted longterm lines and
+               drop lines kernel.org no longer lists as `longterm` (EOL).
+             - Keep entries sorted ascending by version. If the newest stable
+               line is also a longterm line, keep a single entry and mark it
+               `LTS`.
+          2. `.github/workflows/ci.yml` — the `vm-e2e` job's
+             `matrix.release` list must exactly equal the `name` values from
+             `RELEASES` (same order).
+          3. `docs/kernel-support.md` — update the support matrix/table, the
+             "Test methodology" snapshot date, and the `--release` selector
+             examples so they match `RELEASES`. Keep the "Features missing on
+             older kernels" section accurate.
+
+          ### Hard constraints (do not regress)
+          - The **minimum supported kernel is 5.8** (the `BPF_MAP_TYPE_RINGBUF`
+            floor). Never add anything older; if the oldest active longterm line
+            drops below 5.8 upstream, stop and explain in the PR instead.
+          - Preserve the existing `Release` struct shape and doc comments.
+          - Do not change unrelated code.
+
+          ### Before opening the PR
+          - Run `cargo xtask fmt` so formatting stays clean.
+          - Run `cargo xtask lint` and `cargo xtask test` (host-side; fast).
+          - In the PR description, list exactly which lines were added, bumped,
+            or removed and cite the kernel.org versions you used.
+
+          The vm-e2e matrix in CI is the real gate — a green run means every
+          listed kernel still boots and passes the fstrace suite.
+          PROMPT
+          echo "Prompt composed at /tmp/kernel-task.md"
+
+      - name: 🗂️ Create the task issue
+        if: steps.guard.outputs.skip != 'true'
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh issue create \
+            --title "Kernel matrix maintenance: refresh stable/RC/LTS versions" \
+            --label kernel-maintenance \
+            --body-file /tmp/kernel-task.md)
+          echo "Created $url"
+          node_id=$(gh issue view "$url" --json id --jq .id)
+          number=$(gh issue view "$url" --json number --jq .number)
+          {
+            echo "url=$url"
+            echo "node_id=$node_id"
+            echo "number=$number"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 🤖 Assign the Copilot coding agent
+        if: steps.guard.outputs.skip != 'true' && inputs.dry_run != true
+        env:
+          # Prefer a dedicated PAT if provided; otherwise use the workflow token.
+          GH_TOKEN: ${{ secrets.COPILOT_AGENT_TOKEN || github.token }}
+          ISSUE_NODE_ID: ${{ steps.issue.outputs.node_id }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          # The coding agent is a Bot actor, surfaced only via suggestedActors
+          # (not via `user(login:)`). Resolve its node id dynamically.
+          bot_id=$(gh api graphql -f query='
+            query($owner:String!,$name:String!){
+              repository(owner:$owner,name:$name){
+                suggestedActors(capabilities:[CAN_BE_ASSIGNED], first:100){
+                  nodes{ login __typename ... on Bot { id } }
+                }
+              }
+            }' -F owner="${{ github.repository_owner }}" \
+               -F name="${{ github.event.repository.name }}" \
+            --jq '.data.repository.suggestedActors.nodes[]
+                  | select(.login=="copilot-swe-agent" or .login=="Copilot")
+                  | .id' | head -n1)
+
+          if [ -z "${bot_id}" ]; then
+            echo "::error::Copilot coding agent is not assignable on this repo." \
+                 "Enable 'Copilot coding agent' in repository settings."
+            exit 1
+          fi
+          echo "Copilot bot id: ${bot_id}"
+
+          gh api graphql -f query='
+            mutation($assignableId:ID!,$actorIds:[ID!]!){
+              replaceActorsForAssignable(input:{
+                assignableId:$assignableId, actorIds:$actorIds
+              }){ assignable { ... on Issue { number } } }
+            }' -F assignableId="${ISSUE_NODE_ID}" -F actorIds="${bot_id}"
+
+          echo "Assigned Copilot to issue #${ISSUE_NUMBER}; it will open a PR."
+
+      - name: ℹ️ Dry-run summary
+        if: steps.guard.outputs.skip != 'true' && inputs.dry_run == true
+        run: |
+          echo "Dry run: issue ${{ steps.issue.outputs.url }} created but the" \
+               "Copilot agent was not assigned."

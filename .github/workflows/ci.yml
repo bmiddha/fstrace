@@ -3,28 +3,102 @@ name: ci
 on: [push, pull_request]
 
 jobs:
-  cmake-release:
-    name: CMake Build and Test
+  lint-and-unit:
+    name: Format, Clippy & Host Unit Tests
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
 
-    - name: Build Project (Release)
-      uses: threeal/cmake-action@v2.1.0
-      with:
-        options: |
-          CMAKE_BUILD_TYPE=Release
+      - name: 🦀 Install Rust toolchain
+        run: |
+          rustup show
+          rustup component add rustfmt clippy rust-src
+          cargo install bpf-linker --locked
 
-    - name: Test Project (Release)
-      uses: threeal/ctest-action@v1.1.0
+      - name: 💄 Format check
+        run: cargo xtask fmt --check
 
-    - name: Build Project (Debug)
-      uses: threeal/cmake-action@v2.1.0
-      with:
-        options: |
-          CMAKE_BUILD_TYPE=Debug
+      - name: 📎 Clippy
+        run: cargo xtask lint
 
-    - name: Test Project (Debug)
-      uses: threeal/ctest-action@v1.1.0
+      - name: 🔨 Build (release)
+        run: cargo xtask build
+
+      - name: 🧪 Host unit tests
+        run: cargo xtask test
+
+  vm-e2e:
+    name: VM e2e (${{ matrix.userspace.name }} on ${{ matrix.release }})
+    runs-on: ubuntu-latest
+    needs: lint-and-unit
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ["5.10", "5.15", "6.1", "6.6", "6.12", "6.18", "7.1", "7.2-rc"]
+        userspace:
+          - name: ubuntu
+            image: docker.io/library/ubuntu:latest
+          - name: alpine
+            image: docker.io/library/alpine:latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+
+      - name: 🦀 Install Rust toolchain
+        run: |
+          rustup show
+          rustup component add rust-src
+          rustup target add x86_64-unknown-linux-musl
+          cargo install bpf-linker --locked
+
+      - name: 💿 Install QEMU & tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 cpio binutils curl
+
+      - name: ⚡ Enable KVM (best effort)
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: 🖥️ Run VM e2e suite
+        env:
+          FSTRACE_VM_IMAGE: ${{ matrix.userspace.image }}
+        run: cargo xtask vm-test --release ${{ matrix.release }}
+
+  cross-dist:
+    name: Cross-Compile Release Artifacts
+    runs-on: ubuntu-latest
+    needs: lint-and-unit
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+
+      - name: 🦀 Install Rust toolchain
+        run: |
+          rustup show
+          rustup component add rust-src
+          rustup target add ${{ matrix.target }}
+          cargo install bpf-linker --locked
+
+      - name: 🔗 Install aarch64 cross linker
+        if: startsWith(matrix.target, 'aarch64')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: 📦 Build release tarball
+        run: cargo xtask dist --target ${{ matrix.target }}
+
+      - name: ⬆️ Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: fstrace-${{ matrix.target }}
+          path: dist/*.tar.gz

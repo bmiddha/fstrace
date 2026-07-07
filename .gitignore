@@ -1,1 +1,3 @@
-build/
+/target
+/dist
+tests/vm/.cache/

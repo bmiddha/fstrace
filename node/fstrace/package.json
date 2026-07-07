@@ -21,14 +21,20 @@
   ],
   "files": [
     "fstrace",
-    "fstrace-debug",
+    "fstrace-daemon",
+    "fstrace.1",
+    "fstrace-daemon.1",
     "README.md"
+  ],
+  "man": [
+    "fstrace.1",
+    "fstrace-daemon.1"
   ],
   "bin": {
     "fstrace": "fstrace",
-    "fstrace-debug": "fstrace-debug"
+    "fstrace-daemon": "fstrace-daemon"
   },
   "scripts": {
-    "prepare": "cp ../../README.md ."
+    "prepare": "cp ../../README.md . && cp ../../packaging/man/fstrace.1 ../../packaging/man/fstrace-daemon.1 ."
   }
 }

@@ -1,0 +1,19 @@
+# Socket-activation unit for the fstrace daemon.
+#
+# Install both this and fstrace.service into /etc/systemd/system/, then:
+#   systemctl enable --now fstrace.socket
+#
+# systemd creates and owns the listening socket; the daemon (fstrace.service)
+# is started automatically on the first client connection and keeps running
+# afterwards. Unprivileged clients connect without sudo.
+[Unit]
+Description=fstrace daemon socket
+
+[Socket]
+# Must match the client's socket path (default, or FSTRACE_SOCKET).
+ListenStream=/run/fstrace/fstrace.sock
+# World-connectable so unprivileged clients can reach the daemon.
+SocketMode=0666
+
+[Install]
+WantedBy=sockets.target

@@ -1,18 +1,16 @@
 {
-	"image": "mcr.microsoft.com/devcontainers/cpp:1-ubuntu-24.04",
+	"image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
 	"features": {
 		"ghcr.io/devcontainers/features/node:2": {
-			"nodeGypDependencies": true,
-			"version": "18",
-			"pnpmVersion": "latest",
-			"nvmVersion": "latest"
+			"version": "18"
 		}
 	},
+	"onCreateCommand": "rustup show && rustup component add rust-src clippy rustfmt && cargo install bpf-linker --locked",
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"ms-vscode.cmake-tools",
-				"ms-vscode.cpptools"
+				"rust-lang.rust-analyzer",
+				"vadimcn.vscode-lldb"
 			]
 		}
 	}

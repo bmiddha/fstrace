@@ -1,0 +1,26 @@
+[package]
+name = "fstrace-vmtest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+# In-guest test driver for the QEMU end-to-end suite. Built on the host and
+# copied into the VM, where it runs the privileged bootstrap and the
+# unprivileged client suite.
+[[bin]]
+name = "fstrace-vmtest"
+path = "src/main.rs"
+
+# Thin, dependency-light target that only performs raw syscalls for `fstrace`
+# to trace (kept separate so the traced process carries no harness noise).
+[[bin]]
+name = "fstrace-scenario"
+path = "src/scenario.rs"
+
+[dependencies]
+anyhow = { workspace = true, default-features = true }
+clap = { workspace = true }
+libc = { workspace = true, default-features = true }

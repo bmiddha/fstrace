@@ -1,0 +1,187 @@
+.TH FSTRACE 1 "2026-07-06" "fstrace 0.1.0" "User Commands"
+.SH NAME
+fstrace \- trace filesystem accesses of a command using eBPF
+.SH SYNOPSIS
+.B fstrace
+.RI [ -- ]
+.I COMMAND
+.RI [ ARGS ...]
+.br
+.B fstrace
+.RB [ -h | --help ]
+.RB [ -V | --version ]
+.SH DESCRIPTION
+.B fstrace
+runs
+.I COMMAND
+and reports every filesystem path it accesses, using eBPF to observe the
+relevant system calls.
+.PP
+It is the unprivileged client of a two-part design. All privileged work \(em
+loading and attaching the eBPF programs \(em is performed once by the
+.BR fstrace-daemon (1)
+background process, so
+.B fstrace
+itself needs no
+.BR sudo .
+The client forks and execs
+.IR COMMAND ,
+asks the daemon to trace it, and turns the kernel events streamed back over a
+Unix socket into resolved, filtered reports. A running
+.BR fstrace-daemon (1)
+is therefore required.
+.PP
+Everything from
+.I COMMAND
+onward \(em including options such as
+.B \-\-help
+\(em is passed through to the traced program unchanged. For example,
+.B fstrace ls \-\-help
+runs
+.B ls \-\-help
+under trace.
+.SH OPTIONS
+These options are recognised only when they appear
+.I before
+.IR COMMAND .
+.TP
+.BR \-h ", " \-\-help
+Print a help message and exit.
+.TP
+.BR \-V ", " \-\-version
+Print version information and exit.
+.TP
+.B \-\-
+End
+.BR fstrace 's
+own options; treat everything that follows as
+.IR COMMAND .
+.SH REPORTS
+File-access reports are written to
+.BR "file descriptor 3" ,
+one per line, in the form:
+.PP
+.RS
+.I <access_type><file_type>
+.I <file_path>
+.RE
+.PP
+.I access_type
+is
+.B R
+(read),
+.B W
+(write/create),
+.B D
+(delete) or
+.B E
+(enumerate);
+.I file_type
+is
+.B F
+(file),
+.B D
+(directory) or
+.B X
+(does not exist).
+.PP
+Redirect fd 3 to capture reports, e.g.
+.B fstrace ls 3>&1
+(to standard output) or
+.B fstrace ls 3>reports.txt
+(to a file). Alternatively set
+.B FSTRACE_REPORT_FILE
+to a path; this is recommended under
+.BR sudo ,
+which closes inherited descriptors \(>= 3. If fd 3 is not open and
+.B FSTRACE_REPORT_FILE
+is unset,
+.B fstrace
+exits with an error explaining how to fix the invocation.
+.SH ENVIRONMENT
+Paths in the filter variables are colon\-separated. The filter decision is:
+ignore if a negative filter matches; otherwise allow if a positive filter
+matches; otherwise ignore.
+.TP
+.B FSTRACE_FILTER_PREFIX
+Only report paths starting with one of these prefixes (default
+.BR / ).
+.TP
+.B FSTRACE_FILTER_SUBSTRING
+Only report paths containing one of these substrings.
+.TP
+.B FSTRACE_NEGATIVE_FILTER_PREFIX
+Ignore paths starting with one of these prefixes.
+.TP
+.B FSTRACE_NEGATIVE_FILTER_SUBSTRING
+Ignore paths containing one of these substrings.
+.TP
+.B FSTRACE_DEBOUNCE
+Set to
+.B 1
+to debounce duplicate reports. Sending
+.B SIGUSR1
+flushes the debounce cache.
+.TP
+.B FSTRACE_REPORT_FILE
+Write the report stream to this path instead of file descriptor 3.
+.TP
+.B FSTRACE_SOCKET
+Path to the daemon's Unix socket (default
+.BR /run/fstrace/fstrace.sock ).
+Must match the daemon.
+.TP
+.BR FSTRACE_LOG_FILE ", " FSTRACE_LOG_DIR
+Write log output to an explicit file, or to a per\-process file under a
+directory (\c
+.IR fstrace- <pid>\c
+.BR .log ),
+respectively.
+.TP
+.B RUST_LOG
+Log verbosity using
+.BR tracing / env\-filter
+syntax, e.g.
+.BR fstrace=trace .
+.B FSTRACE_DEBUG=1
+is shorthand for
+.BR fstrace=debug .
+.SH EXIT STATUS
+.B fstrace
+propagates the exit status of
+.IR COMMAND :
+a normal exit code is returned as\-is, and termination by signal
+.I N
+is reported as
+.RB 128+ N
+(e.g. 143 for
+.BR SIGTERM ).
+It exits
+.B 1
+on its own startup errors and
+.B 127
+if
+.I COMMAND
+cannot be executed.
+.SH EXAMPLES
+Trace a command, sending reports to standard output:
+.PP
+.RS
+.B fstrace touch /tmp/foo 3>&1
+.RE
+.PP
+Trace only accesses under
+.BR /tmp ,
+writing reports to a file:
+.PP
+.RS
+.B FSTRACE_FILTER_PREFIX=/tmp fstrace make 3>reports.txt
+.RE
+.SH SEE ALSO
+.BR fstrace-daemon (1)
+.PP
+Project documentation:
+.UR https://github.com/bmiddha/fstrace
+.UE
+.SH AUTHOR
+Bharat Middha and contributors.

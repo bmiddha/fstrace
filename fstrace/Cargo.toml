@@ -1,0 +1,35 @@
+[package]
+name = "fstrace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+fstrace-common = { path = "../fstrace-common", features = ["user"] }
+
+anyhow = { workspace = true, default-features = true }
+aya = { workspace = true }
+libc = { workspace = true, default-features = true }
+nix = { workspace = true, features = ["process", "signal", "fs", "poll", "sched"] }
+tracing = { workspace = true, default-features = true }
+tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter", "fmt"] }
+
+[build-dependencies]
+anyhow = { workspace = true, default-features = true }
+aya-build = { workspace = true }
+cargo_metadata = { workspace = true, default-features = true }
+fstrace-ebpf = { path = "../fstrace-ebpf" }
+
+[lib]
+name = "fstrace"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fstrace"
+path = "src/main.rs"
+
+[[bin]]
+name = "fstrace-daemon"
+path = "src/bin/fstrace-daemon.rs"
