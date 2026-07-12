@@ -25,6 +25,13 @@ pub const ACK: u8 = 0x06;
 /// Fixed portion of an encoded event: five `u32`s then four `i64`s.
 const HEADER_LEN: usize = 5 * 4 + 4 * 8;
 
+/// Number of bytes this event occupies in the compact socket representation.
+pub fn encoded_len(ev: &Event) -> usize {
+    let p1 = (ev.path_len as usize).min(PATH_MAX);
+    let p2 = (ev.path2_len as usize).min(PATH_MAX);
+    HEADER_LEN + p1 + p2
+}
+
 /// Resolves the socket path from `FSTRACE_SOCKET` or the default.
 pub fn socket_path() -> PathBuf {
     std::env::var_os(SOCKET_ENV)
@@ -71,7 +78,7 @@ pub fn read_ack<R: Read>(r: &mut R) -> io::Result<()> {
 pub fn encode_event(ev: &Event) -> Vec<u8> {
     let p1 = (ev.path_len as usize).min(PATH_MAX);
     let p2 = (ev.path2_len as usize).min(PATH_MAX);
-    let mut buf = Vec::with_capacity(HEADER_LEN + p1 + p2);
+    let mut buf = Vec::with_capacity(encoded_len(ev));
     buf.extend_from_slice(&ev.pid.to_le_bytes());
     buf.extend_from_slice(&ev.tid.to_le_bytes());
     buf.extend_from_slice(&ev.syscall.to_le_bytes());

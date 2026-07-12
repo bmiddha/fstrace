@@ -38,3 +38,27 @@ RUST_LOG=fstrace=trace FSTRACE_LOG_DIR=/var/log/fstrace fstrace ls / 3>/dev/null
 
 `FSTRACE_LOG_DIR` is created if it does not exist. `FSTRACE_DEBUG_FILE` remains
 supported as a legacy alias for `FSTRACE_LOG_FILE`.
+
+## Aggregate performance profiling
+
+Set `FSTRACE_PROFILE=1` in both the daemon and client environments to emit
+low-volume timing summaries instead of one log entry per event:
+
+```bash
+sudo env FSTRACE_PROFILE=1 FSTRACE_LOG_FILE=/tmp/fstrace-daemon.profile \
+  fstrace-daemon &
+FSTRACE_PROFILE=1 FSTRACE_LOG_FILE=/tmp/fstrace-client.profile \
+  fstrace npm run build 3>/dev/null
+```
+
+The client summary separates event classification/path resolution, filtering,
+debouncing, report formatting/writes, queue latency, and post-exit draining.
+The daemon summary covers event encoding/routing, queue drops, wire bytes, and
+socket writes. The eBPF summary reports per-syscall capture time, pathname-copy
+time and bytes, successful ring-buffer submissions, and ring-buffer drops.
+Per-syscall detail is sorted by total processing time.
+
+Profiling is opt-in because it reads clocks and updates counters for every
+traced event. Normal runs do not collect those timings. eBPF interval snapshots
+are global to the daemon, so profile one client at a time when exact attribution
+matters.

@@ -556,6 +556,41 @@ fn scenario_fork() {
     sys!(libc::SYS_wait4, a, 0, 0, 0);
 }
 
+fn exec_target(syscall: libc::c_long, target: &str) {
+    let target = cs(target);
+    let scenario = cs("stat");
+    let argv = [target.as_ptr(), scenario.as_ptr(), std::ptr::null()];
+    let envp = [std::ptr::null::<libc::c_char>()];
+    let rc = if syscall == libc::SYS_execve {
+        sys!(
+            libc::SYS_execve,
+            target.as_ptr(),
+            argv.as_ptr(),
+            envp.as_ptr()
+        )
+    } else {
+        sys!(
+            libc::SYS_execveat,
+            libc::AT_FDCWD,
+            target.as_ptr(),
+            argv.as_ptr(),
+            envp.as_ptr(),
+            0
+        )
+    };
+    eprintln!(
+        "exec syscall failed ({rc}): {}",
+        std::io::Error::last_os_error()
+    );
+}
+
+fn scenario_thread_exec(target: &str) {
+    let target = target.to_owned();
+    std::thread::spawn(move || exec_target(libc::SYS_execve, &target))
+        .join()
+        .expect("exec thread panicked");
+}
+
 /// Stress near-PATH_MAX (4096-byte) pathnames end to end.
 ///   `longabs` = absolute file inside a very deep directory (~PATH_MAX)
 ///   `longdir` = that very deep directory (to chdir into)
@@ -615,6 +650,20 @@ fn run(name: &str, args: &[String]) -> i32 {
         "stat" => scenario_stat(),
         "readlink" => scenario_readlink(),
         "fork" => scenario_fork(),
+        "execveat" => {
+            let [target] = args else {
+                eprintln!("execveat needs 1 path arg: <target>");
+                return 2;
+            };
+            exec_target(libc::SYS_execveat, target);
+        }
+        "thread-exec" => {
+            let [target] = args else {
+                eprintln!("thread-exec needs 1 path arg: <target>");
+                return 2;
+            };
+            scenario_thread_exec(target);
+        }
         "pathmax" => {
             let [longabs, longdir, relf] = args else {
                 eprintln!("pathmax needs 3 path args: <longabs> <longdir> <relf>");

@@ -24,15 +24,16 @@ use std::{
         mpsc::{SyncSender, TrySendError, sync_channel},
     },
     thread,
+    time::Instant,
 };
 
 use anyhow::{Context as _, anyhow};
-use aya::maps::{HashMap as AyaHashMap, MapData, RingBuf};
-use fstrace_common::{EVENT_EXIT, EVENT_FORK, Event};
+use aya::maps::{HashMap as AyaHashMap, MapData, PerCpuArray, RingBuf};
+use fstrace_common::{EVENT_EXIT, EVENT_FORK, EbpfProfileStat, Event, SYSCALL_COUNT};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use tracing::{debug, info, trace, warn};
 
-use crate::{loader::load_programs, wire};
+use crate::{loader::load_programs, profile, wire};
 
 /// Bound on per-client outbound event queue. Under sustained overload events
 /// are dropped (tracing is best-effort) rather than stalling other clients.
@@ -43,10 +44,35 @@ const CLIENT_QUEUE: usize = 65536;
 /// in-kernel; userspace only inserts roots and cleans up on disconnect.
 type TracedMap = Arc<Mutex<AyaHashMap<MapData, u32, u8>>>;
 
+/// Per-CPU eBPF profile map, shared with client-handler threads for interval
+/// snapshots.
+type ProfileMap = Arc<Mutex<PerCpuArray<MapData, EbpfProfileStat>>>;
+
+fn snapshot_ebpf_profile(map: &ProfileMap) -> anyhow::Result<profile::EbpfProfileSnapshot> {
+    let map = map.lock().unwrap();
+    let mut snapshot = [EbpfProfileStat::default(); SYSCALL_COUNT];
+    for (index, total) in snapshot.iter_mut().enumerate() {
+        let values = map
+            .get(&(index as u32), 0)
+            .with_context(|| format!("reading PROFILE_STATS slot {index}"))?;
+        for value in values.iter() {
+            total.calls += value.calls;
+            total.submitted += value.submitted;
+            total.ringbuf_drops += value.ringbuf_drops;
+            total.path_reads += value.path_reads;
+            total.path_bytes += value.path_bytes;
+            total.capture_ns += value.capture_ns;
+            total.path_read_ns += value.path_read_ns;
+        }
+    }
+    Ok(snapshot)
+}
+
 /// A connected client's outbound channel plus the set of pids it owns.
 struct Client {
     tx: SyncSender<Vec<u8>>,
     pids: HashSet<u32>,
+    profile: Option<Arc<profile::DaemonProfile>>,
 }
 
 /// Routes kernel events to the client that owns the originating pid.
@@ -59,11 +85,17 @@ struct Router {
 impl Router {
     /// Registers a client and its root pid. Events for that pid (and, via
     /// [`Router::add_fork`], its descendants) route to `tx`.
-    fn register(&mut self, id: u64, root_pid: u32, tx: SyncSender<Vec<u8>>) {
+    fn register(
+        &mut self,
+        id: u64,
+        root_pid: u32,
+        tx: SyncSender<Vec<u8>>,
+        profile: Option<Arc<profile::DaemonProfile>>,
+    ) {
         let mut pids = HashSet::new();
         pids.insert(root_pid);
         self.pid_owner.insert(root_pid, id);
-        self.clients.insert(id, Client { tx, pids });
+        self.clients.insert(id, Client { tx, pids, profile });
     }
 
     /// Associates a newly forked `child` with the same client that owns
@@ -90,11 +122,36 @@ impl Router {
 
     /// Encodes and forwards `ev` to the owning client. Returns the client id if
     /// the client has disconnected and should be torn down.
-    fn route(&mut self, ev: &Event) -> Option<u64> {
+    fn route(&mut self, ev: &Event, dispatch_start: Option<Instant>) -> Option<u64> {
         let id = *self.pid_owner.get(&ev.pid)?;
         let client = self.clients.get(&id)?;
-        match client.tx.try_send(wire::encode_event(ev)) {
+        let route_start = client.profile.as_ref().map(|_| Instant::now());
+        let encode_start = client.profile.as_ref().map(|_| Instant::now());
+        let bytes = wire::encode_event(ev);
+        if let (Some(stats), Some(start)) = (&client.profile, encode_start) {
+            stats
+                .encode_ns
+                .fetch_add(profile::duration_ns(start.elapsed()), Ordering::Relaxed);
+            stats
+                .wire_bytes
+                .fetch_add(bytes.len() as u64, Ordering::Relaxed);
+        }
+        let result = client.tx.try_send(bytes);
+        if let (Some(stats), Some(start)) = (&client.profile, route_start) {
+            stats
+                .route_ns
+                .fetch_add(profile::duration_ns(start.elapsed()), Ordering::Relaxed);
+        }
+        if let (Some(stats), Some(start)) = (&client.profile, dispatch_start) {
+            stats
+                .dispatch_ns
+                .fetch_add(profile::duration_ns(start.elapsed()), Ordering::Relaxed);
+        }
+        match result {
             Ok(()) => {
+                if let Some(stats) = &client.profile {
+                    stats.routed.fetch_add(1, Ordering::Relaxed);
+                }
                 trace!(
                     client = id,
                     pid = ev.pid,
@@ -104,6 +161,9 @@ impl Router {
                 None
             }
             Err(TrySendError::Full(_)) => {
+                if let Some(stats) = &client.profile {
+                    stats.queue_drops.fetch_add(1, Ordering::Relaxed);
+                }
                 trace!(client = id, pid = ev.pid, "queue full; dropping event");
                 None // best-effort: drop under overload
             }
@@ -139,7 +199,13 @@ fn teardown_client(id: u64, router: &Mutex<Router>, traced: &TracedMap) {
 /// Per-connection handler: performs the registration handshake, spawns a writer
 /// thread for outbound events, then blocks until the client disconnects and
 /// tears the client down.
-fn handle_client(stream: UnixStream, id: u64, router: Arc<Mutex<Router>>, traced: TracedMap) {
+fn handle_client(
+    stream: UnixStream,
+    id: u64,
+    router: Arc<Mutex<Router>>,
+    traced: TracedMap,
+    profile_map: Option<ProfileMap>,
+) {
     let mut ctrl = match stream.try_clone() {
         Ok(s) => s,
         Err(err) => {
@@ -163,8 +229,25 @@ fn handle_client(stream: UnixStream, id: u64, router: Arc<Mutex<Router>>, traced
         return;
     }
 
+    let daemon_profile = profile_map
+        .as_ref()
+        .map(|_| Arc::new(profile::DaemonProfile::default()));
+    let process_cpu_start = daemon_profile.as_ref().map(|_| profile::process_cpu_ns());
+    let ebpf_before = profile_map
+        .as_ref()
+        .and_then(|map| match snapshot_ebpf_profile(map) {
+            Ok(snapshot) => Some(snapshot),
+            Err(err) => {
+                warn!("client {id}: taking initial eBPF profile snapshot failed: {err:#}");
+                None
+            }
+        });
+
     let (tx, rx) = sync_channel::<Vec<u8>>(CLIENT_QUEUE);
-    router.lock().unwrap().register(id, root_pid, tx);
+    router
+        .lock()
+        .unwrap()
+        .register(id, root_pid, tx, daemon_profile.clone());
 
     // Acknowledge on the socket *before* the writer thread can emit any event,
     // guaranteeing the ACK byte is the first thing the client reads.
@@ -191,10 +274,19 @@ fn handle_client(stream: UnixStream, id: u64, router: Arc<Mutex<Router>>, traced
             return;
         }
     };
-    thread::spawn(move || {
+    let writer_profile = daemon_profile.clone();
+    let writer_handle = thread::spawn(move || {
         use std::io::Write;
         for bytes in rx {
-            if writer.write_all(&bytes).is_err() {
+            let started = writer_profile.as_ref().map(|_| Instant::now());
+            let result = writer.write_all(&bytes);
+            if let (Some(stats), Some(started)) = (&writer_profile, started) {
+                stats.socket_writes.fetch_add(1, Ordering::Relaxed);
+                stats
+                    .socket_write_ns
+                    .fetch_add(profile::duration_ns(started.elapsed()), Ordering::Relaxed);
+            }
+            if result.is_err() {
                 break;
             }
         }
@@ -214,6 +306,22 @@ fn handle_client(stream: UnixStream, id: u64, router: Arc<Mutex<Router>>, traced
     }
 
     teardown_client(id, &router, &traced);
+    let _ = writer_handle.join();
+    if let Some(daemon_profile) = daemon_profile {
+        daemon_profile.log(
+            id,
+            profile::process_cpu_ns().saturating_sub(process_cpu_start.unwrap_or_default()),
+        );
+    }
+    if let (Some(map), Some(before)) = (&profile_map, ebpf_before) {
+        match snapshot_ebpf_profile(map) {
+            Ok(after) => {
+                let delta = profile::subtract_ebpf_profiles(&before, &after);
+                profile::log_ebpf_profile(id, &delta);
+            }
+            Err(err) => warn!("client {id}: taking final eBPF profile snapshot failed: {err:#}"),
+        }
+    }
     debug!("client {id}: disconnected");
 }
 
@@ -284,7 +392,8 @@ fn acquire_listener() -> anyhow::Result<UnixListener> {
 /// Runs the daemon: load eBPF, accept clients, and route ring-buffer events
 /// until interrupted.
 pub fn run() -> anyhow::Result<()> {
-    let mut ebpf = load_programs().context("loading eBPF programs")?;
+    let profiling = profile::enabled();
+    let mut ebpf = load_programs(profiling).context("loading eBPF programs")?;
 
     let traced_map: AyaHashMap<_, u32, u8> = AyaHashMap::try_from(
         ebpf.take_map("TRACED")
@@ -296,6 +405,16 @@ pub fn run() -> anyhow::Result<()> {
         ebpf.take_map("EVENTS")
             .ok_or_else(|| anyhow!("EVENTS map missing"))?,
     )?;
+    let profile_map = if profiling {
+        let map = ebpf
+            .take_map("PROFILE_STATS")
+            .ok_or_else(|| anyhow!("PROFILE_STATS map missing"))?;
+        Some(Arc::new(Mutex::new(
+            PerCpuArray::try_from(map).context("PROFILE_STATS is not a per-CPU array")?,
+        )))
+    } else {
+        None
+    };
 
     let router = Arc::new(Mutex::new(Router::default()));
     let listener = acquire_listener()?;
@@ -304,6 +423,7 @@ pub fn run() -> anyhow::Result<()> {
     {
         let router = Arc::clone(&router);
         let traced = Arc::clone(&traced);
+        let profile_map = profile_map.clone();
         let ids = AtomicU64::new(1);
         thread::spawn(move || {
             for stream in listener.incoming() {
@@ -312,7 +432,10 @@ pub fn run() -> anyhow::Result<()> {
                         let id = ids.fetch_add(1, Ordering::Relaxed);
                         let router = Arc::clone(&router);
                         let traced = Arc::clone(&traced);
-                        thread::spawn(move || handle_client(stream, id, router, traced));
+                        let profile_map = profile_map.clone();
+                        thread::spawn(move || {
+                            handle_client(stream, id, router, traced, profile_map)
+                        });
                     }
                     Err(err) => warn!("accept failed: {err}"),
                 }
@@ -328,7 +451,11 @@ pub fn run() -> anyhow::Result<()> {
         let mut fds = [PollFd::new(borrowed, PollFlags::POLLIN)];
         let _ = poll(&mut fds, PollTimeout::from(500u16));
 
-        while let Some(item) = ring.next() {
+        loop {
+            let dispatch_start = profiling.then(Instant::now);
+            let Some(item) = ring.next() else {
+                break;
+            };
             if item.len() < core::mem::size_of::<Event>() {
                 continue;
             }
@@ -339,7 +466,7 @@ pub fn run() -> anyhow::Result<()> {
                 EVENT_FORK => router.lock().unwrap().add_fork(ev.pid, ev.ret as u32),
                 EVENT_EXIT => router.lock().unwrap().drop_pid(ev.pid),
                 _ => {
-                    let dead = router.lock().unwrap().route(ev);
+                    let dead = router.lock().unwrap().route(ev, dispatch_start);
                     if let Some(id) = dead {
                         teardown_client(id, &router, &traced);
                     }
@@ -432,6 +559,7 @@ SOCKET ACTIVATION:
 ENVIRONMENT:
     FSTRACE_SOCKET                      Socket path to bind (default /run/fstrace/fstrace.sock);
                                         --socket takes precedence.
+    FSTRACE_PROFILE=1                   Emit aggregate daemon and eBPF performance timings.
     FSTRACE_LOG_FILE / FSTRACE_LOG_DIR  Write logs to an explicit file / a per-process directory.
     RUST_LOG                            Log verbosity (e.g. fstrace=trace); FSTRACE_DEBUG=1 means fstrace=debug.
 

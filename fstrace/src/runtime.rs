@@ -15,11 +15,12 @@ use std::{
         unix::net::UnixStream,
     },
     sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context as _, anyhow};
@@ -34,7 +35,9 @@ use nix::{
 use tracing::{trace, warn};
 use tracing_subscriber::{EnvFilter, fmt::writer::BoxMakeWriter};
 
-use crate::{Tracer, debounce::Debounce, filter::Filter, options::Options, proc::RealSystem, wire};
+use crate::{
+    Tracer, debounce::Debounce, filter::Filter, options::Options, proc::RealSystem, profile, wire,
+};
 
 /// File descriptor reports are written to, matching the original tool.
 const REPORT_FD: RawFd = 3;
@@ -45,6 +48,11 @@ const REPORT_FILE_ENV: &str = "FSTRACE_REPORT_FILE";
 
 /// Set by the `SIGUSR1` handler; drains to a debounce flush in the event loop.
 static FLUSH_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+struct QueuedEvent {
+    event: fstrace_common::Event,
+    received_at: Option<Instant>,
+}
 
 extern "C" fn handle_sigusr1(_sig: i32) {
     FLUSH_REQUESTED.store(true, Ordering::SeqCst);
@@ -118,6 +126,11 @@ fn spawn_child(program: &str, args: &[String]) -> anyhow::Result<Pid> {
 /// Runs the tracer against `program`/`args`, returning the process exit code to
 /// propagate.
 pub fn run(program: &str, args: &[String], filter: Filter, debounce: bool) -> anyhow::Result<i32> {
+    let total_start = Instant::now();
+    let profiling = profile::enabled();
+    let process_cpu_start = profiling.then(profile::process_cpu_ns);
+    let runtime_profile = Arc::new(profile::ClientRuntimeProfile::default());
+
     // Acquire the report sink before anything else so a closed fd 3 is detected
     // deterministically (see `open_report_sink`).
     let sink = open_report_sink()?;
@@ -128,6 +141,7 @@ pub fn run(program: &str, args: &[String], filter: Filter, debounce: bool) -> an
             .context("installing SIGUSR1 handler")?;
     }
 
+    let handshake_start = Instant::now();
     let mut stream = connect_daemon()?;
     trace!(socket = %wire::socket_path().display(), "connected to daemon");
 
@@ -141,6 +155,7 @@ pub fn run(program: &str, args: &[String], filter: Filter, debounce: bool) -> an
     }
     wire::write_hello(&mut stream, child.as_raw() as u32).context("registering with daemon")?;
     wire::read_ack(&mut stream).context("daemon handshake")?;
+    let handshake_duration = handshake_start.elapsed();
     trace!(pid = child.as_raw(), "daemon acknowledged; tracing active");
 
     let mut tracer = Tracer::new(RealSystem, filter, Debounce::new(debounce), sink);
@@ -153,10 +168,21 @@ pub fn run(program: &str, args: &[String], filter: Filter, debounce: bool) -> an
     // Reader thread: blocking-reads whole events off the socket and forwards
     // them to the main loop, which owns the (non-Send) tracer.
     let mut reader = stream.try_clone().context("cloning daemon socket")?;
-    let (tx, rx) = mpsc::channel::<fstrace_common::Event>();
+    let (tx, rx) = mpsc::channel::<QueuedEvent>();
+    let reader_profile = Arc::clone(&runtime_profile);
     let reader_handle = thread::spawn(move || {
         while let Ok(ev) = wire::read_event(&mut reader) {
-            if tx.send(ev).is_err() {
+            let received_at = profiling.then(Instant::now);
+            if profiling {
+                reader_profile.record_wire_event(wire::encoded_len(&ev) as u64);
+            }
+            if tx
+                .send(QueuedEvent {
+                    event: ev,
+                    received_at,
+                })
+                .is_err()
+            {
                 break;
             }
         }
@@ -165,13 +191,22 @@ pub fn run(program: &str, args: &[String], filter: Filter, debounce: bool) -> an
     // Resume the child now that tracing is active.
     signal::kill(child, Signal::SIGCONT).context("resuming child")?;
     trace!(pid = child.as_raw(), "resumed child");
+    let child_start = Instant::now();
 
     let exit_code = loop {
         match rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(ev) => {
-                let _ = tracer.handle_event(&ev);
-                while let Ok(ev) = rx.try_recv() {
-                    let _ = tracer.handle_event(&ev);
+            Ok(queued) => {
+                if let Some(received_at) = queued.received_at {
+                    runtime_profile
+                        .record_queue_latency(profile::duration_ns(received_at.elapsed()));
+                }
+                let _ = tracer.handle_event(&queued.event);
+                while let Ok(queued) = rx.try_recv() {
+                    if let Some(received_at) = queued.received_at {
+                        runtime_profile
+                            .record_queue_latency(profile::duration_ns(received_at.elapsed()));
+                    }
+                    let _ = tracer.handle_event(&queued.event);
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -195,16 +230,33 @@ pub fn run(program: &str, args: &[String], filter: Filter, debounce: bool) -> an
             }
         }
     };
+    let child_duration = child_start.elapsed();
 
     // Drain any events emitted right before the child exited.
-    while let Ok(ev) = rx.recv_timeout(Duration::from_millis(50)) {
-        let _ = tracer.handle_event(&ev);
+    let drain_start = Instant::now();
+    while let Ok(queued) = rx.recv_timeout(Duration::from_millis(50)) {
+        if let Some(received_at) = queued.received_at {
+            runtime_profile.record_queue_latency(profile::duration_ns(received_at.elapsed()));
+        }
+        let _ = tracer.handle_event(&queued.event);
     }
     let _ = tracer.flush();
 
     // Tear down the connection so the daemon cleans up our pids.
     let _ = stream.shutdown(std::net::Shutdown::Both);
     let _ = reader_handle.join();
+    let drain_duration = drain_start.elapsed();
+
+    tracer.log_profile();
+    if profiling {
+        runtime_profile.log(
+            total_start.elapsed(),
+            handshake_duration,
+            child_duration,
+            drain_duration,
+            profile::process_cpu_ns().saturating_sub(process_cpu_start.unwrap_or_default()),
+        );
+    }
 
     Ok(exit_code)
 }
@@ -247,6 +299,7 @@ ENVIRONMENT:
     FSTRACE_DEBOUNCE                    Set to 1 to debounce duplicate reports (SIGUSR1 flushes the cache).
     FSTRACE_REPORT_FILE                 Write reports to this path instead of file descriptor 3.
     FSTRACE_SOCKET                      Daemon socket path (default /run/fstrace/fstrace.sock).
+    FSTRACE_PROFILE=1                   Emit aggregate client performance timings.
     FSTRACE_LOG_FILE / FSTRACE_LOG_DIR  Write logs to an explicit file / a per-process directory.
     RUST_LOG                            Log verbosity (e.g. fstrace=trace); FSTRACE_DEBUG=1 means fstrace=debug.
 
@@ -312,7 +365,9 @@ fn resolve_log_writer(component: &str) -> (BoxMakeWriter, bool) {
 pub(crate) fn init_tracing(component: &str) {
     // `RUST_LOG` fully overrides the default when present; `FSTRACE_DEBUG` is a
     // convenience shorthand for bumping fstrace's own modules to debug.
-    let default_directive = if std::env::var_os("FSTRACE_DEBUG").is_some() {
+    let default_directive = if profile::enabled() {
+        "warn,fstrace::profile=info"
+    } else if std::env::var_os("FSTRACE_DEBUG").is_some() {
         "fstrace=debug"
     } else {
         "warn"
