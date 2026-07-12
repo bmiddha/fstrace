@@ -221,35 +221,6 @@ impl<S: System> Engine<S> {
                 Some(single(access, file, path))
             }
 
-            // --- stat / access family (success => unknown type) -----------
-            Stat | Lstat | Access => {
-                let path = self.resolve_cwd_relative(pid, &raw1);
-                self.stat_like(is_err, missing, path)
-            }
-            Newfstatat | Statx | Faccessat | Faccessat2 => {
-                let path = self.resolve_at(pid, ev.dirfd, &raw1);
-                self.stat_like(is_err, missing, path)
-            }
-
-            // --- readlink -------------------------------------------------
-            Readlink | Readlinkat => {
-                let path = if syscall == Readlink {
-                    self.resolve_cwd_relative(pid, &raw1)
-                } else {
-                    self.resolve_at(pid, ev.dirfd, &raw1)
-                };
-                let file = if is_err {
-                    if missing {
-                        FileType::Missing
-                    } else {
-                        return None;
-                    }
-                } else {
-                    FileType::Symlink
-                };
-                Some(single(AccessType::Read, file, path))
-            }
-
             // --- delete ---------------------------------------------------
             Unlink | Unlinkat => {
                 let path = if syscall == Unlink {
@@ -287,21 +258,6 @@ impl<S: System> Engine<S> {
                     )
                 };
                 Some(rename_emit(old, new))
-            }
-
-            // --- directory enumeration ------------------------------------
-            Getdents | Getdents64 => {
-                let path = self.get_fd(pid, ev.dirfd).unwrap_or_default();
-                let file = if is_err {
-                    if missing {
-                        FileType::Missing
-                    } else {
-                        return None;
-                    }
-                } else {
-                    FileType::Directory
-                };
-                Some(single(AccessType::Enumerate, file, path))
             }
 
             // --- symlink / link -------------------------------------------
@@ -381,22 +337,6 @@ impl<S: System> Engine<S> {
                 Some(single(AccessType::Read, file, path))
             }
         }
-    }
-
-    /// Shared classification for the stat / access family: read access, whose
-    /// file type is `Missing` on a not-found error, `Unknown` on success, and
-    /// which is skipped entirely on any other error.
-    fn stat_like(&mut self, is_err: bool, missing: bool, path: String) -> Option<Emit> {
-        let file = if is_err {
-            if missing {
-                FileType::Missing
-            } else {
-                return None;
-            }
-        } else {
-            FileType::Unknown
-        };
-        Some(single(AccessType::Read, file, path))
     }
 }
 
@@ -620,51 +560,6 @@ mod tests {
     }
 
     #[test]
-    fn stat_success_is_unknown_type() {
-        let mut e = engine();
-        let mut ev = event(Syscall::Stat);
-        set_path(&mut ev, "/etc/hosts");
-        ev.ret = 0;
-        let emit = e.process(&ev).unwrap();
-        assert_eq!(
-            emit.accesses[0],
-            Access::new(AccessType::Read, FileType::Unknown, "/etc/hosts".into())
-        );
-    }
-
-    #[test]
-    fn stat_missing() {
-        let mut e = engine();
-        let mut ev = event(Syscall::Stat);
-        set_path(&mut ev, "/nope");
-        ev.ret = -libc::ENOENT as i64;
-        let emit = e.process(&ev).unwrap();
-        assert_eq!(emit.accesses[0].file, FileType::Missing);
-    }
-
-    #[test]
-    fn access_other_error_skipped() {
-        let mut e = engine();
-        let mut ev = event(Syscall::Access);
-        set_path(&mut ev, "/x");
-        ev.ret = -libc::EACCES as i64;
-        assert!(e.process(&ev).is_none());
-    }
-
-    #[test]
-    fn readlink_success_is_symlink() {
-        let mut e = engine();
-        let mut ev = event(Syscall::Readlink);
-        set_path(&mut ev, "/link");
-        ev.ret = 10;
-        let emit = e.process(&ev).unwrap();
-        assert_eq!(
-            emit.accesses[0],
-            Access::new(AccessType::Read, FileType::Symlink, "/link".into())
-        );
-    }
-
-    #[test]
     fn unlink_success_delete_missing() {
         let mut e = engine();
         let mut ev = event(Syscall::Unlink);
@@ -719,25 +614,6 @@ mod tests {
         let emit = e.process(&ev).unwrap();
         assert_eq!(emit.accesses[0].path, "/old/dir/a");
         assert_eq!(emit.accesses[1].path, "/new/dir/b");
-    }
-
-    #[test]
-    fn getdents_resolves_fd_and_enumerates() {
-        let mut sys = MockSystem::default();
-        sys.fds.insert((1000, 9), "/some/dir".into());
-        let mut e = Engine::new(sys);
-        let mut ev = event(Syscall::Getdents64);
-        ev.dirfd = 9;
-        ev.ret = 100;
-        let emit = e.process(&ev).unwrap();
-        assert_eq!(
-            emit.accesses[0],
-            Access::new(
-                AccessType::Enumerate,
-                FileType::Directory,
-                "/some/dir".into()
-            )
-        );
     }
 
     #[test]

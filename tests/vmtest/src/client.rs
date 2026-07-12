@@ -218,6 +218,31 @@ fn smoke(t: &mut Tally) -> Result<()> {
     Ok(())
 }
 
+fn exec_path_test(t: &mut Tally, name: &str, via: Option<&str>) -> Result<()> {
+    setup_testdir()?;
+    let target = Path::new(TESTDIR).join("exec-target");
+    std::fs::copy(scenario_bin(), &target)?;
+    let target = target.to_string_lossy().into_owned();
+    let program = if let Some(scenario) = via {
+        vec![scenario_bin(), scenario.into(), target.clone()]
+    } else {
+        vec![target.clone(), "stat".into()]
+    };
+    let (actual, status, _, stderr) = run_traced(&program, &[])?;
+    let expected = format!("RF {target}");
+    let exact = actual.lines().filter(|line| *line == expected).count();
+    let cwd_substitution = format!("RF {TESTDIR}/");
+    if status.success() && exact == 1 && !actual.lines().any(|line| line == cwd_substitution) {
+        t.pass(name);
+    } else {
+        t.fail(name);
+        println!(
+            "  expected exactly once: {expected}\n----- actual -------\n{actual}\n----- stderr -------\n{stderr}\n--------------------"
+        );
+    }
+    Ok(())
+}
+
 fn pathmax_test(t: &mut Tally) -> Result<()> {
     let base = Path::new(TESTDIR);
     rm_rf(base);
@@ -239,7 +264,7 @@ fn pathmax_test(t: &mut Tally) -> Result<()> {
         longabs.len()
     );
 
-    let expected = format!("WF {longabs}\nRF {longabs}\nR? {longabs}\nRF {longdir}/B");
+    let expected = format!("WF {longabs}\nRF {longabs}\nRF {longdir}/B");
     let mut program = vec![scenario_bin()];
     program.extend([
         "pathmax".into(),
@@ -438,6 +463,17 @@ pub fn run() -> Result<()> {
     }
 
     smoke(&mut t)?;
+    exec_path_test(&mut t, "execve path survives successful exec", None)?;
+    exec_path_test(
+        &mut t,
+        "execveat path survives successful exec",
+        Some("execveat"),
+    )?;
+    exec_path_test(
+        &mut t,
+        "thread exec path survives de_thread",
+        Some("thread-exec"),
+    )?;
 
     t.check("creat", &fmt(&["WF {D}/newfile0", "WF {D}/newfile1"]))?;
     t.check(
@@ -483,19 +519,12 @@ pub fn run() -> Result<()> {
             "RD {D}/dir0",
         ]),
     )?;
-    t.check("stat", &fmt(&["R? {D}/file0", "RX {D}/does-not-exist"]))?;
-    t.check(
-        "getdents",
-        &fmt(&["RD {D}", "ED {D}", "RF {D}/file0", "EX {D}/file0"]),
-    )?;
-    t.check(
-        "readlink",
-        &fmt(&[
-            "RL {D}/file0.link",
-            "RX {D}/does-not-exist.link",
-            "RL {D}/dir0.link",
-        ]),
-    )?;
+    // Metadata-only syscall families are intentionally not attached. Keep
+    // scenarios for them so the suite guards against accidentally re-enabling
+    // their high-volume reports.
+    t.check("stat", "")?;
+    t.check("getdents", &fmt(&["RD {D}", "RF {D}/file0"]))?;
+    t.check("readlink", "")?;
     t.check(
         "unlink",
         &fmt(&[

@@ -73,17 +73,29 @@ is
 .B W
 (write/create),
 .B D
-(delete) or
+(delete);
 .B E
-(enumerate);
+is reserved for directory enumeration.
 .I file_type
 is
 .B F
 (file),
 .B D
-(directory) or
+(directory),
 .B X
-(does not exist).
+(does not exist),
+.B L
+(symbolic link) or
+.B ?
+(unknown).
+.PP
+Metadata-only
+.BR stat / access / readlink
+and
+.BR getdents
+directory-enumeration syscalls are intentionally not traced. They duplicate
+paths already reported by open-family calls and match the original tracer's
+production filter.
 .PP
 Redirect fd 3 to capture reports, e.g.
 .B fstrace ls 3>&1
@@ -130,6 +142,12 @@ Write the report stream to this path instead of file descriptor 3.
 Path to the daemon's Unix socket (default
 .BR /run/fstrace/fstrace.sock ).
 Must match the daemon.
+.TP
+.B FSTRACE_PROFILE
+Set to
+.B 1
+in both the client and daemon environments to emit aggregate Rust and eBPF
+performance summaries through the logging destination.
 .TP
 .BR FSTRACE_LOG_FILE ", " FSTRACE_LOG_DIR
 Write log output to an explicit file, or to a per\-process file under a

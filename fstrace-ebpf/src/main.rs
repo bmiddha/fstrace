@@ -4,7 +4,8 @@
 //! exit it reads the syscall arguments out of the saved `pt_regs`, copies the
 //! raw pathname argument(s) from user memory, and pushes a fixed-size
 //! [`Event`] onto a ring buffer for the userspace loader to resolve, classify
-//! and report.
+//! and report. Successful execs replace userspace memory before fexit runs, so
+//! their pathname is saved by a paired fentry probe.
 //!
 //! Two tracepoints maintain the set of traced pids: `sched_process_fork` adds
 //! children of traced processes, and `sched_process_exit` removes them. The
@@ -17,16 +18,19 @@ use aya_ebpf::bindings::user_pt_regs;
 #[cfg(bpf_target_arch = "x86_64")]
 use aya_ebpf::cty::c_ulong;
 use aya_ebpf::{
+    Global,
     bindings::pt_regs,
     helpers::{
-        bpf_get_current_pid_tgid, bpf_probe_read_kernel, bpf_probe_read_user,
-        bpf_probe_read_user_str_bytes,
+        bpf_get_current_pid_tgid, bpf_get_current_task, bpf_ktime_get_ns, bpf_probe_read_kernel,
+        bpf_probe_read_kernel_buf, bpf_probe_read_user, bpf_probe_read_user_str_bytes,
     },
-    macros::{fexit, map, tracepoint},
-    maps::{Array, HashMap, RingBuf},
-    programs::{FExitContext, TracePointContext},
+    macros::{fentry, fexit, map, tracepoint},
+    maps::{Array, HashMap, LruHashMap, PerCpuArray, RingBuf},
+    programs::{FEntryContext, FExitContext, TracePointContext},
 };
-use fstrace_common::{EVENT_EXIT, EVENT_FORK, Event, PATH_MAX, Syscall};
+use fstrace_common::{
+    EVENT_EXIT, EVENT_FORK, EbpfProfileStat, Event, PATH_MAX, SYSCALL_COUNT, Syscall,
+};
 
 /// `O_CREAT` from `<fcntl.h>` on Linux; `creat(2)` implies it.
 const O_CREAT: i64 = 0o100;
@@ -40,6 +44,16 @@ const CHILD_PID_OFFSET_LEGACY: u32 = 44;
 /// [`FORK_CFG`], populated by the userspace loader from the tracepoint format.
 const CHILD_PID_OFFSET_DATALOC: u32 = 20;
 
+/// Pathname captured before a successful exec replaces the caller's address
+/// space. The per-CPU scratch map keeps this PATH_MAX-sized value off the BPF
+/// stack; the LRU map holds it until the paired fexit probe runs.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ExecPath {
+    len: u32,
+    bytes: [u8; PATH_MAX],
+}
+
 /// Ring buffer carrying [`Event`]s to userspace (16 MiB).
 #[map]
 static EVENTS: RingBuf = RingBuf::with_byte_size(16 * 1024 * 1024, 0);
@@ -48,6 +62,31 @@ static EVENTS: RingBuf = RingBuf::with_byte_size(16 * 1024 * 1024, 0);
 /// offset in the `sched_process_fork` record for the running kernel.
 #[map]
 static FORK_CFG: Array<u32> = Array::with_max_entries(1, 0);
+
+/// Read-only switch overridden by the loader when `FSTRACE_PROFILE=1`.
+#[unsafe(no_mangle)]
+static PROFILE_ENABLED: Global<u32> = Global::new(0);
+
+/// Per-CPU, per-syscall capture timings. Disabled runs only pay one config-map
+/// lookup after a pid has already matched [`TRACED`].
+#[map]
+static PROFILE_STATS: PerCpuArray<EbpfProfileStat> =
+    PerCpuArray::with_max_entries(SYSCALL_COUNT as u32, 0);
+
+/// Per-CPU staging buffer used while copying an exec pathname from userspace.
+#[map]
+static EXEC_PATH_SCRATCH: PerCpuArray<ExecPath> = PerCpuArray::with_max_entries(1, 0);
+
+/// In-flight exec pathnames, keyed by `task_struct` so a non-leader thread's
+/// successful exec survives the kernel's TID change during `de_thread()`.
+#[map]
+static EXEC_PATHS: LruHashMap<u64, ExecPath> = LruHashMap::with_max_entries(4096, 0);
+
+/// TGIDs currently inside exec. During a secondary thread's successful exec,
+/// the old group leader exits as part of `de_thread()`; this marker prevents
+/// that synthetic leader exit from ending tracing for the surviving process.
+#[map]
+static EXECING_TGIDS: LruHashMap<u32, u8> = LruHashMap::with_max_entries(4096, 0);
 
 /// Set of thread-group ids (pids) currently being traced.
 #[map]
@@ -159,16 +198,130 @@ fn read_user_path(ptr: u64, dst: &mut [u8; PATH_MAX]) -> u32 {
     }
 }
 
-/// Shared body for every traced syscall's `fexit` program.
 #[inline(always)]
-fn handle(ctx: &FExitContext, syscall: Syscall, spec: Spec) -> u32 {
+fn profile_start() -> u64 {
+    if PROFILE_ENABLED.load() != 0 {
+        unsafe { bpf_ktime_get_ns() }
+    } else {
+        0
+    }
+}
+
+#[inline(always)]
+fn record_profile(
+    syscall: Syscall,
+    start_ns: u64,
+    path_reads: u64,
+    path_bytes: u64,
+    path_read_ns: u64,
+    submitted: bool,
+) {
+    if start_ns == 0 {
+        return;
+    }
+    let capture_ns = unsafe { bpf_ktime_get_ns() } - start_ns;
+    if let Some(stats) = PROFILE_STATS.get_ptr_mut(syscall as u32) {
+        unsafe {
+            (*stats).calls += 1;
+            (*stats).submitted += submitted as u64;
+            (*stats).ringbuf_drops += (!submitted) as u64;
+            (*stats).path_reads += path_reads;
+            (*stats).path_bytes += path_bytes;
+            (*stats).capture_ns += capture_ns;
+            (*stats).path_read_ns += path_read_ns;
+        }
+    }
+}
+
+/// Adds the separate exec-fentry work to the same per-syscall profile row
+/// without counting a second syscall call or ring-buffer submission.
+#[inline(always)]
+fn record_exec_entry_profile(syscall: Syscall, start_ns: u64, path_bytes: u64, path_read_ns: u64) {
+    if start_ns == 0 {
+        return;
+    }
+    let capture_ns = unsafe { bpf_ktime_get_ns() } - start_ns;
+    if let Some(stats) = PROFILE_STATS.get_ptr_mut(syscall as u32) {
+        unsafe {
+            (*stats).path_reads += 1;
+            (*stats).path_bytes += path_bytes;
+            (*stats).capture_ns += capture_ns;
+            (*stats).path_read_ns += path_read_ns;
+        }
+    }
+}
+
+/// Saves an exec pathname while the caller's original userspace address space
+/// still exists. `task_struct` is stable even when exec changes a non-leader
+/// thread's TID to the process TGID.
+#[inline(always)]
+fn capture_exec_path(ctx: &FEntryContext, syscall: Syscall, path_arg: u8) -> u32 {
     let pid_tgid = bpf_get_current_pid_tgid();
     let tgid = (pid_tgid >> 32) as u32;
     let tid = pid_tgid as u32;
-
     if unsafe { TRACED.get(&tgid) }.is_none() {
         return 0;
     }
+    if tid != tgid {
+        // sched_process_fork initially seeds both process IDs and thread IDs.
+        // A secondary thread that execs adopts the TGID without producing an
+        // exit under its old TID, so retire that otherwise-stale key now.
+        let _ = TRACED.remove(&tid);
+    }
+
+    let profile_start_ns = profile_start();
+    let regs_ptr: *const pt_regs = ctx.arg(0);
+    let scratch = match EXEC_PATH_SCRATCH.get_ptr_mut(0) {
+        Some(scratch) => scratch,
+        None => return 0,
+    };
+    let path_start_ns = if profile_start_ns != 0 {
+        unsafe { bpf_ktime_get_ns() }
+    } else {
+        0
+    };
+
+    unsafe {
+        let path_ptr = reg(regs_ptr, path_arg);
+        (*scratch).len = read_user_path(path_ptr, &mut (*scratch).bytes);
+        let path_read_ns = if path_start_ns != 0 {
+            bpf_ktime_get_ns() - path_start_ns
+        } else {
+            0
+        };
+        let task = bpf_get_current_task();
+        let _ = EXEC_PATHS.insert(&task, &*scratch, 0);
+        let _ = EXECING_TGIDS.insert(&tgid, &1, 0);
+        record_exec_entry_profile(
+            syscall,
+            profile_start_ns,
+            (*scratch).len as u64,
+            path_read_ns,
+        );
+    }
+    0
+}
+
+/// Shared body for every traced syscall's `fexit` program.
+#[inline(always)]
+fn handle(ctx: &FExitContext, syscall: Syscall, spec: Spec, captured_exec: bool) -> u32 {
+    let pid_tgid = bpf_get_current_pid_tgid();
+    let tgid = (pid_tgid >> 32) as u32;
+    let tid = pid_tgid as u32;
+    let exec_task = if captured_exec {
+        unsafe { bpf_get_current_task() }
+    } else {
+        0
+    };
+
+    if unsafe { TRACED.get(&tgid) }.is_none() {
+        if captured_exec {
+            let _ = EXEC_PATHS.remove(&exec_task);
+            let _ = EXECING_TGIDS.remove(&tgid);
+        }
+        return 0;
+    }
+    let profile_start_ns = profile_start();
 
     // fexit args: [ *const pt_regs, return_value ].
     let regs_ptr: *const pt_regs = ctx.arg(0);
@@ -176,9 +329,18 @@ fn handle(ctx: &FExitContext, syscall: Syscall, spec: Spec) -> u32 {
 
     let mut entry = match EVENTS.reserve::<Event>(0) {
         Some(entry) => entry,
-        None => return 0,
+        None => {
+            if captured_exec {
+                let _ = EXEC_PATHS.remove(&exec_task);
+                let _ = EXECING_TGIDS.remove(&tgid);
+            }
+            record_profile(syscall, profile_start_ns, 0, 0, 0, false);
+            return 0;
+        }
     };
     let ev = entry.as_mut_ptr();
+    let mut path_reads = 0;
+    let mut path_bytes = 0;
 
     unsafe {
         (*ev).pid = tgid;
@@ -209,14 +371,53 @@ fn handle(ctx: &FExitContext, syscall: Syscall, spec: Spec) -> u32 {
                 bpf_probe_read_user::<u64>(how_ptr as *const u64).unwrap_or(0) as i64
             }
         };
-        if let Some(i) = spec.path1 {
-            let p = reg(regs_ptr, i);
-            (*ev).path_len = read_user_path(p, &mut (*ev).path);
+        let mut used_captured_path = false;
+        if captured_exec && let Some(saved) = EXEC_PATHS.get_ptr(&exec_task) {
+            let saved = &*saved;
+            let len = saved.len.min(PATH_MAX as u32);
+            if bpf_probe_read_kernel_buf(saved.bytes.as_ptr(), &mut (*ev).path).is_ok() {
+                (*ev).path_len = len;
+                used_captured_path = true;
+            }
+        }
+        let path_start_ns = if profile_start_ns != 0
+            && ((spec.path1.is_some() && !used_captured_path) || spec.path2.is_some())
+        {
+            bpf_ktime_get_ns()
+        } else {
+            0
+        };
+        if !used_captured_path {
+            if let Some(i) = spec.path1 {
+                let p = reg(regs_ptr, i);
+                (*ev).path_len = read_user_path(p, &mut (*ev).path);
+                path_reads += 1;
+                path_bytes += (*ev).path_len as u64;
+            }
         }
         if let Some(i) = spec.path2 {
             let p = reg(regs_ptr, i);
             (*ev).path2_len = read_user_path(p, &mut (*ev).path2);
+            path_reads += 1;
+            path_bytes += (*ev).path2_len as u64;
         }
+        let path_read_ns = if path_start_ns != 0 {
+            bpf_ktime_get_ns() - path_start_ns
+        } else {
+            0
+        };
+        if captured_exec {
+            let _ = EXEC_PATHS.remove(&exec_task);
+            let _ = EXECING_TGIDS.remove(&tgid);
+        }
+        record_profile(
+            syscall,
+            profile_start_ns,
+            path_reads,
+            path_bytes,
+            path_read_ns,
+            true,
+        );
     }
 
     entry.submit(0);
@@ -228,7 +429,7 @@ macro_rules! syscall_probe {
     ($name:ident, $fn:literal, $sys:expr, $spec:expr) => {
         #[fexit(function = $fn)]
         pub fn $name(ctx: FExitContext) -> u32 {
-            handle(&ctx, $sys, $spec)
+            handle(&ctx, $sys, $spec, false)
         }
     };
 }
@@ -259,63 +460,9 @@ syscall_probe!(
     Spec::new().path1(0).flags(Flags::Const(O_CREAT))
 );
 
-// --- stat / access family ------------------------------------------------
-syscall_probe!(
-    sys_newstat,
-    "__x64_sys_newstat",
-    Syscall::Stat,
-    Spec::new().path1(0)
-);
-syscall_probe!(
-    sys_newlstat,
-    "__x64_sys_newlstat",
-    Syscall::Lstat,
-    Spec::new().path1(0)
-);
-syscall_probe!(
-    sys_newfstatat,
-    "__x64_sys_newfstatat",
-    Syscall::Newfstatat,
-    Spec::new().dirfd1(0).path1(1).flags(Flags::Arg(3))
-);
-syscall_probe!(
-    sys_statx,
-    "__x64_sys_statx",
-    Syscall::Statx,
-    Spec::new().dirfd1(0).path1(1).flags(Flags::Arg(2))
-);
-syscall_probe!(
-    sys_access,
-    "__x64_sys_access",
-    Syscall::Access,
-    Spec::new().path1(0)
-);
-syscall_probe!(
-    sys_faccessat,
-    "__x64_sys_faccessat",
-    Syscall::Faccessat,
-    Spec::new().dirfd1(0).path1(1).flags(Flags::Arg(3))
-);
-syscall_probe!(
-    sys_faccessat2,
-    "__x64_sys_faccessat2",
-    Syscall::Faccessat2,
-    Spec::new().dirfd1(0).path1(1).flags(Flags::Arg(3))
-);
-
-// --- readlink ------------------------------------------------------------
-syscall_probe!(
-    sys_readlink,
-    "__x64_sys_readlink",
-    Syscall::Readlink,
-    Spec::new().path1(0)
-);
-syscall_probe!(
-    sys_readlinkat,
-    "__x64_sys_readlinkat",
-    Syscall::Readlinkat,
-    Spec::new().dirfd1(0).path1(1)
-);
+// stat/access/readlink probes are intentionally omitted. These metadata-heavy
+// families dominate Node-style workloads while adding no opened/created path,
+// matching the original tracer's production seccomp filter.
 
 // --- delete --------------------------------------------------------------
 syscall_probe!(
@@ -395,25 +542,15 @@ syscall_probe!(
     Spec::new().dirfd1(1).path1(2)
 );
 
-// --- truncate / dir enumeration -----------------------------------------
+// --- truncate ------------------------------------------------------------
 syscall_probe!(
     sys_truncate,
     "__x64_sys_truncate",
     Syscall::Truncate,
     Spec::new().path1(0)
 );
-syscall_probe!(
-    sys_getdents,
-    "__x64_sys_getdents",
-    Syscall::Getdents,
-    Spec::new().dirfd1(0)
-);
-syscall_probe!(
-    sys_getdents64,
-    "__x64_sys_getdents64",
-    Syscall::Getdents64,
-    Spec::new().dirfd1(0)
-);
+// getdents/getdents64 are likewise omitted: opening the directory is already
+// reported, and reporting every enumeration adds high-volume duplicate noise.
 
 // --- cwd / exec / close --------------------------------------------------
 syscall_probe!(
@@ -428,18 +565,30 @@ syscall_probe!(
     Syscall::Fchdir,
     Spec::new().dirfd1(0)
 );
-syscall_probe!(
-    sys_execve,
-    "__x64_sys_execve",
-    Syscall::Execve,
-    Spec::new().path1(0)
-);
-syscall_probe!(
-    sys_execveat,
-    "__x64_sys_execveat",
-    Syscall::Execveat,
-    Spec::new().dirfd1(0).path1(1).flags(Flags::Arg(4))
-);
+#[fentry(function = "__x64_sys_execve")]
+pub fn enter_execve(ctx: FEntryContext) -> u32 {
+    capture_exec_path(&ctx, Syscall::Execve, 0)
+}
+
+#[fexit(function = "__x64_sys_execve")]
+pub fn sys_execve(ctx: FExitContext) -> u32 {
+    handle(&ctx, Syscall::Execve, Spec::new().path1(0), true)
+}
+
+#[fentry(function = "__x64_sys_execveat")]
+pub fn enter_execveat(ctx: FEntryContext) -> u32 {
+    capture_exec_path(&ctx, Syscall::Execveat, 1)
+}
+
+#[fexit(function = "__x64_sys_execveat")]
+pub fn sys_execveat(ctx: FExitContext) -> u32 {
+    handle(
+        &ctx,
+        Syscall::Execveat,
+        Spec::new().dirfd1(0).path1(1).flags(Flags::Arg(4)),
+        true,
+    )
+}
 syscall_probe!(
     sys_close,
     "__x64_sys_close",
@@ -507,11 +656,27 @@ pub fn sched_process_exit(_ctx: TracePointContext) -> u32 {
     let pid_tgid = bpf_get_current_pid_tgid();
     let tgid = (pid_tgid >> 32) as u32;
     let tid = pid_tgid as u32;
+    let task = unsafe { bpf_get_current_task() };
+    let exiting_exec_task = unsafe { EXEC_PATHS.get(&task) }.is_some();
+    let _ = EXEC_PATHS.remove(&task);
+    if exiting_exec_task {
+        // The exec'ing task itself died before fexit could clear its marker.
+        // This is a real exit, not the old leader retired by de_thread().
+        let _ = EXECING_TGIDS.remove(&tgid);
+    }
     if tgid == tid {
+        if !exiting_exec_task && unsafe { EXECING_TGIDS.get(&tgid) }.is_some() {
+            return 0;
+        }
         if unsafe { TRACED.get(&tgid) }.is_some() {
             emit_lifecycle(EVENT_EXIT, tgid, 0);
         }
         let _ = TRACED.remove(&tgid);
+    } else {
+        // sched_process_fork cannot distinguish a process from a thread and
+        // initially seeds both child IDs. A non-leader exit can safely discard
+        // that unused TID key without affecting the process's TGID key.
+        let _ = TRACED.remove(&tid);
     }
     0
 }

@@ -13,16 +13,23 @@ pub mod loader;
 pub mod options;
 pub mod pathnorm;
 pub mod proc;
+pub mod profile;
 pub mod report;
 pub mod runtime;
 pub mod wire;
 
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    time::Instant,
+};
 
-use fstrace_common::Event;
+use fstrace_common::{Event, SYSCALL_COUNT};
 use tracing::trace;
 
-use crate::{debounce::Debounce, engine::Engine, filter::Filter, proc::System, report::Reporter};
+use crate::{
+    debounce::Debounce, engine::Engine, filter::Filter, proc::System, profile::ProcessingProfile,
+    report::Reporter,
+};
 
 /// End-to-end event processor: resolve + classify (via [`Engine`]), filter,
 /// debounce, and report.
@@ -31,6 +38,7 @@ pub struct Tracer<S: System, W: Write> {
     filter: Filter,
     debounce: Debounce,
     reporter: Reporter<W>,
+    profile: ProcessingProfile,
 }
 
 impl<S: System, W: Write> Tracer<S, W> {
@@ -41,12 +49,21 @@ impl<S: System, W: Write> Tracer<S, W> {
             filter,
             debounce,
             reporter: Reporter::new(sink),
+            profile: ProcessingProfile::new(profile::enabled()),
         }
     }
 
     /// Processes one raw event: any resulting accesses that pass the filter and
     /// debounce are written to the sink.
     pub fn handle_event(&mut self, event: &Event) -> io::Result<()> {
+        if self.profile.enabled {
+            self.handle_event_profiled(event)
+        } else {
+            self.handle_event_unprofiled(event)
+        }
+    }
+
+    fn handle_event_unprofiled(&mut self, event: &Event) -> io::Result<()> {
         let Some(emit) = self.engine.process(event) else {
             return Ok(());
         };
@@ -66,6 +83,73 @@ impl<S: System, W: Write> Tracer<S, W> {
             }
         }
         Ok(())
+    }
+
+    fn handle_event_profiled(&mut self, event: &Event) -> io::Result<()> {
+        let event_start = Instant::now();
+        self.profile.events += 1;
+        let syscall_index =
+            ((event.syscall as usize) < SYSCALL_COUNT).then_some(event.syscall as usize);
+
+        let stage_start = Instant::now();
+        let emit = self.engine.process(event);
+        self.profile.engine_ns += profile::duration_ns(stage_start.elapsed());
+        let Some(emit) = emit else {
+            self.profile.ignored_events += 1;
+            self.finish_profile_event(event_start, syscall_index);
+            return Ok(());
+        };
+        self.profile.emitted_events += 1;
+
+        let stage_start = Instant::now();
+        let interesting = self.filter.is_interesting(&emit.filter_path);
+        self.profile.filter_ns += profile::duration_ns(stage_start.elapsed());
+        if !interesting {
+            self.profile.filtered_events += 1;
+            trace!(path = %emit.filter_path, "filtered out (not interesting)");
+            self.finish_profile_event(event_start, syscall_index);
+            return Ok(());
+        }
+
+        self.profile.accesses += emit.accesses.len() as u64;
+        for access in &emit.accesses {
+            let stage_start = Instant::now();
+            let should_log = self
+                .debounce
+                .should_log(access.access, access.file, &access.path);
+            self.profile.debounce_ns += profile::duration_ns(stage_start.elapsed());
+            if should_log {
+                trace!(?access.access, ?access.file, path = %access.path, "reporting access");
+                let stage_start = Instant::now();
+                let result = self.reporter.report(access);
+                self.profile.report_ns += profile::duration_ns(stage_start.elapsed());
+                if let Err(err) = result {
+                    self.finish_profile_event(event_start, syscall_index);
+                    return Err(err);
+                }
+                self.profile.reports += 1;
+                self.profile.report_bytes += access.path.len() as u64 + 4;
+            } else {
+                self.profile.debounced += 1;
+                trace!(?access.access, ?access.file, path = %access.path, "debounced (suppressed)");
+            }
+        }
+        self.finish_profile_event(event_start, syscall_index);
+        Ok(())
+    }
+
+    fn finish_profile_event(&mut self, start: Instant, syscall_index: Option<usize>) {
+        let elapsed = profile::duration_ns(start.elapsed());
+        self.profile.total_ns += elapsed;
+        if let Some(index) = syscall_index {
+            self.profile.syscall_calls[index] += 1;
+            self.profile.syscall_ns[index] += elapsed;
+        }
+    }
+
+    /// Emits the aggregate processing summary when `FSTRACE_PROFILE=1`.
+    pub fn log_profile(&self) {
+        self.profile.log();
     }
 
     /// Seeds the initial working directory for a pid (the launched process

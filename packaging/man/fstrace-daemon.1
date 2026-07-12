@@ -75,6 +75,12 @@ The
 .B \-\-socket
 option takes precedence. Must match the clients.
 .TP
+.B FSTRACE_PROFILE
+Set to
+.B 1
+in both the daemon and client environments to emit aggregate daemon, client,
+and eBPF performance summaries through the logging destination.
+.TP
 .BR FSTRACE_LOG_FILE ", " FSTRACE_LOG_DIR
 Write log output to an explicit file, or to a per\-process file
 .RI ( fstrace-daemon.log )

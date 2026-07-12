@@ -10,7 +10,7 @@ cargo xtask test        # or: cargo test --release --workspace --exclude fstrace
 Run `cargo xtask check` to reproduce the full CI lint/test gate locally
 (format check + clippy + unit tests).
 
-The privileged loader and full syscall coverage are exercised end-to-end inside a
+The privileged loader and enabled syscall set are exercised end-to-end inside a
 throwaway QEMU VM, so the eBPF programs never load on the host. The harness is
 written entirely in Rust: `xtask` drives the VM orchestration, the `fstrace-vmtest`
 crate provides the in-guest suite, and a thin companion binary, `fstrace-scenario`,

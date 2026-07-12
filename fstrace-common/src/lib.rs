@@ -25,6 +25,10 @@ pub const EVENT_FORK: u32 = 0xFFFF_0001;
 /// pid from its routing table.
 pub const EVENT_EXIT: u32 = 0xFFFF_0002;
 
+/// Number of profile slots, covering every stable [`Syscall`] wire value up to
+/// the highest enabled discriminant (including reserved gaps).
+pub const SYSCALL_COUNT: usize = 33;
+
 /// The set of syscalls fstrace traces.
 ///
 /// The discriminants are stable wire values written into [`Event::syscall`] by
@@ -37,15 +41,6 @@ pub enum Syscall {
     Openat = 1,
     Openat2 = 2,
     Creat = 3,
-    Stat = 4,
-    Lstat = 5,
-    Newfstatat = 6,
-    Statx = 7,
-    Access = 8,
-    Faccessat = 9,
-    Faccessat2 = 10,
-    Readlink = 11,
-    Readlinkat = 12,
     Unlink = 13,
     Unlinkat = 14,
     Rmdir = 15,
@@ -59,8 +54,6 @@ pub enum Syscall {
     Symlink = 23,
     Symlinkat = 24,
     Truncate = 25,
-    Getdents = 26,
-    Getdents64 = 27,
     Chdir = 28,
     Fchdir = 29,
     Execve = 30,
@@ -77,15 +70,6 @@ impl Syscall {
             1 => Openat,
             2 => Openat2,
             3 => Creat,
-            4 => Stat,
-            5 => Lstat,
-            6 => Newfstatat,
-            7 => Statx,
-            8 => Access,
-            9 => Faccessat,
-            10 => Faccessat2,
-            11 => Readlink,
-            12 => Readlinkat,
             13 => Unlink,
             14 => Unlinkat,
             15 => Rmdir,
@@ -99,8 +83,6 @@ impl Syscall {
             23 => Symlink,
             24 => Symlinkat,
             25 => Truncate,
-            26 => Getdents,
-            27 => Getdents64,
             28 => Chdir,
             29 => Fchdir,
             30 => Execve,
@@ -110,7 +92,61 @@ impl Syscall {
         };
         Some(syscall)
     }
+
+    /// Stable lowercase name used in diagnostics and profile output.
+    pub const fn name(self) -> &'static str {
+        use Syscall::*;
+        match self {
+            Open => "open",
+            Openat => "openat",
+            Openat2 => "openat2",
+            Creat => "creat",
+            Unlink => "unlink",
+            Unlinkat => "unlinkat",
+            Rmdir => "rmdir",
+            Rename => "rename",
+            Renameat => "renameat",
+            Renameat2 => "renameat2",
+            Mkdir => "mkdir",
+            Mkdirat => "mkdirat",
+            Link => "link",
+            Linkat => "linkat",
+            Symlink => "symlink",
+            Symlinkat => "symlinkat",
+            Truncate => "truncate",
+            Chdir => "chdir",
+            Fchdir => "fchdir",
+            Execve => "execve",
+            Execveat => "execveat",
+            Close => "close",
+        }
+    }
 }
+
+/// Per-syscall counters populated by the eBPF capture path when profiling is
+/// enabled. The map is per-CPU, so these fields can be updated without atomic
+/// operations and summed by the daemon after a client disconnects.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct EbpfProfileStat {
+    /// Traced syscall exits that entered the capture path.
+    pub calls: u64,
+    /// Events successfully submitted to the ring buffer.
+    pub submitted: u64,
+    /// Events dropped because the ring buffer had no free reservation.
+    pub ringbuf_drops: u64,
+    /// Userspace pathname reads attempted.
+    pub path_reads: u64,
+    /// Path bytes copied from userspace.
+    pub path_bytes: u64,
+    /// Nanoseconds in capture after pid selection and profile enablement.
+    pub capture_ns: u64,
+    /// Nanoseconds within `capture_ns` spent in pathname read helpers.
+    pub path_read_ns: u64,
+}
+
+#[cfg(feature = "user")]
+unsafe impl aya::Pod for EbpfProfileStat {}
 
 /// How a path was accessed. Serialised as the first output character.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -225,10 +261,17 @@ mod tests {
 
     #[test]
     fn syscall_roundtrips_through_u32() {
-        for value in 0..=32u32 {
+        for value in [
+            0, 1, 2, 3, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32,
+        ] {
             let syscall = Syscall::from_u32(value).expect("known discriminant");
             assert_eq!(syscall as u32, value);
         }
+        for value in 4..=12 {
+            assert_eq!(Syscall::from_u32(value), None);
+        }
+        assert_eq!(Syscall::from_u32(26), None);
+        assert_eq!(Syscall::from_u32(27), None);
         assert_eq!(Syscall::from_u32(33), None);
         assert_eq!(Syscall::from_u32(u32::MAX), None);
     }

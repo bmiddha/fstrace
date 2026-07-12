@@ -5,9 +5,9 @@ use std::path::Path;
 
 use anyhow::Context as _;
 use aya::{
-    Btf, Ebpf,
+    Btf, Ebpf, EbpfLoader,
     maps::Array,
-    programs::{FExit, TracePoint},
+    programs::{FEntry, FExit, TracePoint},
 };
 use tracing::{trace, warn};
 
@@ -83,11 +83,12 @@ fn fork_child_pid_offset() -> u32 {
 }
 
 /// Loads the embedded eBPF object and attaches every program:
-/// `sys_*` become `fexit` probes on the matching `__x64_sys_*` kernel function,
-/// and `sched_*` become tracepoints. Per-syscall attach failures are warnings
-/// (some syscalls may not exist on every kernel); tracepoint failures are fatal
-/// because pid scoping depends on them.
-pub fn load_programs() -> anyhow::Result<Ebpf> {
+/// `enter_*` and `sys_*` become fentry/fexit probes on the matching
+/// `__x64_sys_*` kernel function, and `sched_*` become tracepoints. Per-syscall
+/// fexit attach failures are warnings (some syscalls may not exist on every
+/// kernel); exec fentry and lifecycle tracepoint failures are fatal because
+/// correct exec paths and pid scoping depend on them.
+pub fn load_programs(profile_enabled: bool) -> anyhow::Result<Ebpf> {
     // The daemon is the privileged component, so it takes responsibility for
     // making tracefs available. This lets it run in a minimal container (e.g.
     // `FROM scratch` with only `--privileged`) without the host having to
@@ -105,11 +106,15 @@ pub fn load_programs() -> anyhow::Result<Ebpf> {
         libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim);
     }
 
-    let mut ebpf = Ebpf::load(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/fstrace"
-    )))
-    .context("loading eBPF object")?;
+    let profile_enabled = u32::from(profile_enabled);
+    let mut loader = EbpfLoader::new();
+    loader.override_global("PROFILE_ENABLED", &profile_enabled, true);
+    let mut ebpf = loader
+        .load(aya::include_bytes_aligned!(concat!(
+            env!("OUT_DIR"),
+            "/fstrace"
+        )))
+        .context("loading eBPF object")?;
 
     let btf = Btf::from_sys_fs().context("reading kernel BTF")?;
 
@@ -124,14 +129,33 @@ pub fn load_programs() -> anyhow::Result<Ebpf> {
             .context("configuring sched_process_fork child_pid offset")?;
         trace!(offset, "configured sched_process_fork child_pid offset");
     }
+    trace!(
+        profile_enabled = profile_enabled != 0,
+        "configured eBPF profiling"
+    );
 
     let names: Vec<String> = ebpf.programs().map(|(name, _)| name.to_string()).collect();
     for name in names {
         if let Some(program) = ebpf.program_mut(&name) {
-            if let Some(kernel_fn) = name.strip_prefix("sys_").map(|_| format!("__x64_{name}")) {
+            if let Some(syscall) = name.strip_prefix("enter_") {
+                let kernel_fn = format!("__x64_sys_{syscall}");
+                let prog: &mut FEntry = program.try_into()?;
+                prog.load(&kernel_fn, &btf)
+                    .with_context(|| format!("loading {name} for {kernel_fn}"))?;
+                prog.attach()
+                    .with_context(|| format!("attaching {name} to {kernel_fn}"))?;
+                trace!(program = %name, target = %kernel_fn, "attached fentry probe");
+            } else if let Some(kernel_fn) =
+                name.strip_prefix("sys_").map(|_| format!("__x64_{name}"))
+            {
+                let required_exec_probe = matches!(name.as_str(), "sys_execve" | "sys_execveat");
                 let prog: &mut FExit = match program.try_into() {
                     Ok(prog) => prog,
                     Err(err) => {
+                        if required_exec_probe {
+                            return Err(err)
+                                .with_context(|| format!("converting required program {name}"));
+                        }
                         warn!("program {name} is not an FExit: {err}");
                         continue;
                     }
@@ -140,6 +164,10 @@ pub fn load_programs() -> anyhow::Result<Ebpf> {
                     .load(&kernel_fn, &btf)
                     .and_then(|()| prog.attach().map(|_| ()))
                 {
+                    if required_exec_probe {
+                        return Err(err)
+                            .with_context(|| format!("attaching required {name} to {kernel_fn}"));
+                    }
                     warn!("skipping {name} (target {kernel_fn}): {err}");
                 } else {
                     trace!(program = %name, target = %kernel_fn, "attached fexit probe");
