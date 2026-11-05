@@ -77,6 +77,12 @@ enum Cmd {
         #[arg(long = "target")]
         targets: Vec<String>,
     },
+    /// Build and pack the wrapper and static x64/ARM64 npm packages.
+    NpmDist {
+        /// Pack existing musl release tarballs from dist/ instead of rebuilding.
+        #[arg(long)]
+        skip_build: bool,
+    },
 }
 
 fn workspace_root() -> std::path::PathBuf {
@@ -140,6 +146,14 @@ fn main() -> Result<ExitCode> {
         }
         Cmd::Dist { targets } => {
             dist::dist(&root, &targets)?;
+        }
+        Cmd::NpmDist { skip_build } => {
+            let mut cmd = Command::new("node");
+            cmd.current_dir(&root).arg("node/pack.mjs");
+            if skip_build {
+                cmd.arg("--skip-build");
+            }
+            run(cmd)?;
         }
     }
     Ok(ExitCode::SUCCESS)

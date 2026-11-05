@@ -4,7 +4,7 @@
 
 - A Linux kernel built with BTF (`CONFIG_DEBUG_INFO_BTF=y`) and `fexit`/BPF
   trampoline support, plus the BPF ring buffer. In practice this means **kernel
-  5.8 or newer** (most distro kernels since Ubuntu 20.10 / Debian 11). See
+  5.8 or newer on x64, 6.0 or newer on ARM64**. See
   [Kernel version support](kernel-support.md) for the verified matrix.
 - Root privileges (`CAP_BPF` + `CAP_PERFMON`, or `CAP_SYS_ADMIN`) to run the
   `fstrace-daemon`, which loads the eBPF programs. The `fstrace` client needs no
@@ -55,6 +55,7 @@ loose shell scripts to remember — every task is Rust:
 | `cargo xtask docker-build`  | Build the `FROM scratch` daemon image.                  |
 | `cargo xtask docker-test`   | Run the containerized daemon end-to-end.                |
 | `cargo xtask dist`          | Cross-compile release tarballs for the target matrix.   |
+| `cargo xtask npm-dist`      | Build musl release tarballs and pack scoped npm packages. |
 
 Run `cargo xtask check` before pushing to reproduce the CI lint/test gate
 locally.
@@ -76,7 +77,7 @@ sudo install -m 0644 packaging/man/fstrace.1 packaging/man/fstrace-daemon.1 \
 sudo mandb
 ```
 
-The npm package ships the same man pages, so `npm i -g fstrace` registers
+The npm package ships the same man pages, so `npm i -g @fstrace/fstrace` registers
 `man fstrace` and `man fstrace-daemon` automatically.
 
 ## Cross-compilation & release artifacts
@@ -122,3 +123,12 @@ report format. ARM64 needs kernel 6.0+ with BPF trampoline support; see
 `cargo xtask docker-build` builds for the host architecture by default. To
 cross-build an image, use `cargo xtask docker-build --arch aarch64` (or
 `--arch x86-64`); the binary and image platform are selected together.
+
+## npm distribution
+
+`cargo xtask npm-dist` reuses the two musl release targets and writes three
+installable `.tgz` files to `dist/npm/`: `@fstrace/fstrace`,
+`@fstrace/linux-x64`, and `@fstrace/linux-arm64`. Use
+`cargo xtask npm-dist --skip-build` to pack existing musl tarballs in `dist/`.
+Node.js 18+ and npm are required for packing. See
+[npm releases](npm-releases.md) for versioning, tests, and publishing setup.

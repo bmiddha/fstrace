@@ -1,0 +1,16 @@
+{
+  "name": "@fstrace/linux-x64",
+  "version": "0.1.0",
+  "description": "Static Linux x64 binaries for @fstrace/fstrace",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bmiddha/fstrace.git"
+  },
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": ["bin/fstrace", "bin/fstrace-daemon", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  }
+}

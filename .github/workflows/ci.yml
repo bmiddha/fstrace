@@ -96,7 +96,7 @@ jobs:
           rustup target add ${{ matrix.target }}
 
       - name: 🔗 Install aarch64 cross linker
-        if: startsWith(matrix.target, 'aarch64')
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
@@ -109,3 +109,48 @@ jobs:
         with:
           name: fstrace-${{ matrix.target }}
           path: dist/*.tar.gz
+
+  npm-pack:
+    name: Pack scoped npm distribution
+    needs: cross-dist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: fstrace-*-unknown-linux-musl
+          merge-multiple: true
+          path: dist
+      - run: cargo xtask npm-dist --skip-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-packages
+          path: dist/npm/*.tgz
+          if-no-files-found: error
+
+  npm-install:
+    name: Test packed npm installs
+    needs: npm-pack
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@v5
+        with:
+          name: npm-packages
+          path: dist/npm
+      - run: node --test node/tests/launcher.test.cjs
+      - run: node node/test-packed.mjs
+      - name: Test packed installs on musl
+        run: |
+          docker run --rm -v "$PWD:/workspace:ro" -w /workspace node:24-alpine \
+            sh -c 'node --test node/tests/launcher.test.cjs && node node/test-packed.mjs'

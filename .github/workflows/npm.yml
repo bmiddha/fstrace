@@ -1,0 +1,107 @@
+name: npm distribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to npm (requires a matching vVERSION tag and trusted publishers)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-build
+      - run: cargo xtask dist --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-binaries-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  pack:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: npm-binaries-*
+          merge-multiple: true
+          path: dist
+      - run: cargo xtask npm-dist --skip-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-packages
+          path: dist/npm/*.tgz
+          if-no-files-found: error
+
+  test:
+    needs: pack
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@v5
+        with:
+          name: npm-packages
+          path: dist/npm
+      - run: node --test node/tests/launcher.test.cjs
+      - run: node node/test-packed.mjs
+      - name: Test packed installs on musl
+        run: |
+          docker run --rm -v "$PWD:/workspace:ro" -w /workspace node:24-alpine \
+            sh -c 'node --test node/tests/launcher.test.cjs && node node/test-packed.mjs'
+
+  publish:
+    if: inputs.publish
+    needs: [pack, test]
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    concurrency: npm-publish
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@v5
+        with:
+          name: npm-packages
+          path: dist/npm
+      - name: Require a versioned release tag
+        shell: bash
+        run: |
+          version=$(node -p "require('./node/fstrace/package.json').version")
+          if [ "$GITHUB_REF" != "refs/tags/v${version}" ]; then
+            echo "::error::Select the v${version} tag to publish these packages."
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Publish platform packages before the wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm publish "dist/npm/fstrace-linux-x64-${VERSION}.tgz" --access public --provenance --registry https://registry.npmjs.org
+          npm publish "dist/npm/fstrace-linux-arm64-${VERSION}.tgz" --access public --provenance --registry https://registry.npmjs.org
+          npm publish "dist/npm/fstrace-fstrace-${VERSION}.tgz" --access public --provenance --registry https://registry.npmjs.org

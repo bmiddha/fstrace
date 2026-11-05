@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+name=${0##*/}
+script=$0
+while [ -L "$script" ]; do
+    directory=$(dirname "$script")
+    link=$(readlink "$script")
+    case "$link" in
+        /*) script=$link ;;
+        *) script=$directory/$link ;;
+    esac
+done
+directory=$(CDPATH= cd -- "$(dirname "$script")/.." && pwd)
+binary=$(node "$directory/resolve.cjs" "$name")
+exec "$binary" "$@"

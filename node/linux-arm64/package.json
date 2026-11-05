@@ -1,0 +1,16 @@
+{
+  "name": "@fstrace/linux-arm64",
+  "version": "0.1.0",
+  "description": "Static Linux ARM64 binaries for @fstrace/fstrace",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bmiddha/fstrace.git"
+  },
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin/fstrace", "bin/fstrace-daemon", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  }
+}
