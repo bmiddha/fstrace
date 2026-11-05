@@ -89,8 +89,8 @@ jobs:
             (that is where `xtask/src/kernel.rs` downloads bzImages from). Before
             adding a version, confirm `https://kernel.ubuntu.com/mainline/v<VER>/`
             exists and contains `linux-image-unsigned-*-generic_*_<arch>.deb`
-            in its `amd64/` and `arm64/` directories (ARM64 tests require 6.0+
-            for BPF trampolines, so older LTS lines only need amd64).
+            in its `amd64/` and `arm64/` directories (ARM64 tests require 6.4+
+            for ftrace direct calls, so older LTS lines only need amd64).
 
           ### What to update (single source of truth first)
           1. `xtask/src/vm.rs` — the `RELEASES` const. Each entry is

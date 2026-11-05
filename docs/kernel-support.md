@@ -12,11 +12,12 @@ lower bound on the kernel version.
 | `fexit` / BPF trampolines                 | 5.5        | Every syscall probe is an `fexit` program         |
 | BPF ring buffer (`BPF_MAP_TYPE_RINGBUF`)  | 5.8        | The `EVENTS` map that carries events to userspace |
 
-**Minimum supported kernel: x64 5.8, ARM64 6.0.** ARM64 BPF trampolines arrived
-in 6.0; older ARM64 kernels cannot attach the required fentry/fexit probes even
-when they have BTF and ring buffers. The kernel must also be built with BTF
-and BPF trampoline support, which every mainstream
-distro kernel and every upstream release since ~5.5 enables.
+**Minimum supported kernel: x64 5.8, ARM64 6.4.** ARM64's 6.0 BPF trampoline
+support alone cannot attach to kernel functions: the required
+[ftrace direct-call support](https://lwn.net/Articles/928165/) arrived in 6.4.
+ARM64 6.1 fails attaching the exec probes with `ENOTSUPP` (524), even with BTF
+and ring buffers. Version alone is insufficient: the kernel configuration must
+enable BTF, BPF trampolines, and the architecture's required ftrace support.
 
 ### Features missing on older kernels
 
@@ -66,8 +67,8 @@ Override the userspace image with `FSTRACE_VM_IMAGE` (verified against both
 ## Verified matrix
 
 The historical results below are **x64** results, not evidence of ARM64 runtime
-coverage. CI additionally runs ARM64 on the listed 6.1+ kernels; 5.10 and 5.15
-are excluded on ARM64 because they predate its BPF trampoline support.
+coverage. CI additionally runs ARM64 on the listed 6.6+ kernels; 5.10, 5.15,
+and 6.1 are excluded on ARM64 because they predate its ftrace direct-call support.
 
 The matrix covers every active upstream **longterm** series, plus the current
 **stable** and **mainline** lines released since the newest LTS. Every kernel
@@ -96,6 +97,10 @@ CI runs the VM suite against the full matrix above
 (see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)), against **both**
 the `ubuntu:latest` (glibc) and `alpine:latest` (musl/BusyBox) userspaces. Each
 job downloads the prebuilt kernel and boots it via QEMU; no kernel is compiled.
+Newer ARM64 images use EFI zboot with zstd compression, which older QEMU cannot
+load directly. The downloader validates the zboot payload range, decompresses
+it with the host's `zstd`, validates the resulting ARM64 Image header, and
+caches that raw image. Existing compressed cache entries are normalized too.
 
 ## Keeping the matrix current (automated)
 

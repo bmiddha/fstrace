@@ -39,8 +39,9 @@ static binaries, kernel download, Docker rootfs platform, QEMU machine, and
 serial console together. Install `qemu-system-x86` for x64 or `qemu-system-arm`
 for ARM64, plus `docker`, `cpio`, `binutils`, `curl`, `zstd`, and `sudo`.
 Cross-architecture guests use TCG rather than KVM. ARM64 tests require kernel
-6.0+ for BPF trampolines. Legacy syscall scenarios use libc wrappers that issue
-the corresponding `*at` calls on ARM64; expected reports remain identical.
+6.4+ for kernel-function fentry/fexit (ftrace direct calls). Legacy syscall
+scenarios use libc wrappers that issue the corresponding `*at` calls on ARM64;
+expected reports remain identical.
 The exec scenarios cover successful exec, non-leader thread exec, and relative
 `execveat` directory fds, including ARM64's reset of argument registers on exec.
 
@@ -73,9 +74,21 @@ across libcs and coreutils:
 FSTRACE_VM_IMAGE=docker.io/library/alpine:latest cargo xtask vm-test --release 6.12
 ```
 
-CI runs every x64 kernel against both images, and ARM64 kernels from 6.1
+CI runs every x64 kernel against both images, and ARM64 kernels from 6.6
 onward against both images on native ARM64 runners. Host tests and Clippy also
 run on both architectures. CI execution is distinct from local compile coverage.
+
+The kernel downloader decompresses zstd EFI zboot images before ARM64 direct
+boot, so QEMU need not support that container format. The VM harness streams
+the full guest console, including daemon startup errors and loader diagnostics,
+rather than hiding lines that do not start with a test-result prefix.
+
+An opt-in downloader integration test requires `curl`, `ar`, GNU `tar`, and
+`zstd`, and downloads the pinned 6.18 ARM64 kernel:
+
+```bash
+cargo test -p xtask downloaded_arm64_zboot_image -- --ignored
+```
 
 See [Kernel version support](kernel-support.md) for the full verified matrix and
 the minimum supported kernel. CI runs this suite across all supported LTS,

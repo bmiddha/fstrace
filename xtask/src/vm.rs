@@ -259,6 +259,12 @@ fn boot_and_check(bzimage: &Path, initramfs: &Path, arch: Architecture) -> Resul
     }
 
     let outcome = run_qemu(bzimage, initramfs, arch, false)?;
+    if !outcome.produced_console && !outcome.stderr.trim().is_empty() {
+        bail!(
+            "QEMU failed before guest startup: {}",
+            outcome.stderr.trim()
+        );
+    }
     if outcome.result.is_none() && !outcome.stderr.trim().is_empty() {
         log(&format!("  (qemu: {})", outcome.stderr.trim()));
     }
@@ -409,17 +415,7 @@ fn collect_console(
         match rx.recv_timeout(remaining.min(Duration::from_secs(5))) {
             Ok(line) => {
                 produced_console = true;
-                if line.starts_with("[vm]")
-                    || line.starts_with("===")
-                    || line.starts_with("PASS")
-                    || line.starts_with("FAIL")
-                    || line.starts_with("SKIP")
-                    || line.contains("FSTRACE_VM_RESULT")
-                    || line.contains("panic")
-                    || line.contains("Kernel panic")
-                {
-                    println!("  {line}");
-                }
+                println!("  {line}");
                 if let Some(code) = line.strip_prefix("FSTRACE_VM_RESULT:") {
                     result = code.trim().parse::<i32>().ok().or(Some(-1));
                     break;

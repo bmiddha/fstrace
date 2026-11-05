@@ -4,7 +4,7 @@
 
 - A Linux kernel built with BTF (`CONFIG_DEBUG_INFO_BTF=y`) and `fexit`/BPF
   trampoline support, plus the BPF ring buffer. In practice this means **kernel
-  5.8 or newer on x64, 6.0 or newer on ARM64**. See
+  5.8 or newer on x64, 6.4 or newer on ARM64**. See
   [Kernel version support](kernel-support.md) for the verified matrix.
 - Root privileges (`CAP_BPF` + `CAP_PERFMON`, or `CAP_SYS_ADMIN`) to run the
   `fstrace-daemon`, which loads the eBPF programs. The `fstrace` client needs no
@@ -105,7 +105,7 @@ including during cross-compilation. The loader attaches to `__x64_sys_*` on
 x86-64 and `__arm64_sys_*` on ARM64. ARM64 has no legacy `open`, `creat`,
 `unlink`, `rmdir`, `rename`, `mkdir`, `link`, or `symlink` syscall; the matching
 `*at` probes capture those operations instead. Both architectures use the same
-report format. ARM64 needs kernel 6.0+ with BPF trampoline support; see
+report format. ARM64 needs kernel 6.4+ with BPF trampoline and ftrace direct-call support; see
 [Kernel version support](kernel-support.md).
 
 ### Toolchain requirements

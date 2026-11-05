@@ -26,8 +26,8 @@ fstrace cat /etc/hostname 3>&1
 Node.js **22+**, `sh`, `dirname`, and `readlink` must be available on `PATH`
 when launching either command, including under `sudo`. npm must install optional
 dependencies; `--omit=optional` leaves no native binary to run. The daemon still
-requires root/BPF privileges and a supported Linux kernel (x64 5.8+, ARM64 6.0+
-with BTF and BPF trampolines).
+requires root/BPF privileges and a supported Linux kernel (x64 5.8+, ARM64 6.4+
+with BTF, BPF trampolines, and ftrace direct calls).
 
 The shell launcher uses Node only to resolve the correct package, then `exec`s
 the native binary. There is no intermediary forwarding process: arguments,
