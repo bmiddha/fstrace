@@ -10,7 +10,7 @@
 //! - `aarch64-unknown-linux-gnu`  — dynamically linked against glibc.
 //! - `aarch64-unknown-linux-musl` — fully static (musl).
 //!
-//! aarch64 targets need a cross linker (`aarch64-linux-gnu-gcc`, wired up in
+//! The aarch64 glibc target needs a cross linker (`aarch64-linux-gnu-gcc`, wired up in
 //! `.cargo/config.toml`); install it with `apt-get install gcc-aarch64-linux-gnu`.
 
 use std::{
@@ -87,7 +87,11 @@ fn build_target(root: &Path, out: &Path, target: &str) -> Result<PathBuf> {
         .current_dir(root)
         .args(["build", "--release", "-p", "fstrace", "--target", target]);
     run(build).with_context(|| {
-        format!("building {target} — aarch64 targets need `apt-get install gcc-aarch64-linux-gnu`")
+        if target == "aarch64-unknown-linux-gnu" {
+            format!("building {target} — install gcc-aarch64-linux-gnu for the cross linker")
+        } else {
+            format!("building {target}")
+        }
     })?;
 
     let bin_dir = root.join("target").join(target).join("release");

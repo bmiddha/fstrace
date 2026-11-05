@@ -576,6 +576,39 @@ fn scenario_thread_exec(target: &str) {
         .expect("exec thread panicked");
 }
 
+fn scenario_execveat_relative(target: &str) {
+    let target = std::path::Path::new(target);
+    let directory = cs(target.parent().unwrap().to_str().unwrap());
+    let filename = cs(target.file_name().unwrap().to_str().unwrap());
+    let dirfd = sys!(
+        libc::SYS_openat,
+        libc::AT_FDCWD,
+        directory.as_ptr(),
+        libc::O_RDONLY | libc::O_DIRECTORY
+    );
+    assert!(
+        dirfd >= 0,
+        "opening exec directory: {}",
+        std::io::Error::last_os_error()
+    );
+    chdir(&cs("/"));
+    let scenario = cs("stat");
+    let argv = [filename.as_ptr(), scenario.as_ptr(), std::ptr::null()];
+    let envp = [std::ptr::null::<libc::c_char>()];
+    sys!(
+        libc::SYS_execveat,
+        dirfd,
+        filename.as_ptr(),
+        argv.as_ptr(),
+        envp.as_ptr(),
+        0
+    );
+    panic!(
+        "relative execveat failed: {}",
+        std::io::Error::last_os_error()
+    );
+}
+
 /// Stress near-PATH_MAX (4096-byte) pathnames end to end.
 ///   `longabs` = absolute file inside a very deep directory (~PATH_MAX)
 ///   `longdir` = that very deep directory (to chdir into)
@@ -641,6 +674,13 @@ fn run(name: &str, args: &[String]) -> i32 {
                 return 2;
             };
             exec_target(libc::SYS_execveat, target);
+        }
+        "execveat-relative" => {
+            let [target] = args else {
+                eprintln!("execveat-relative needs 1 path arg: <target>");
+                return 2;
+            };
+            scenario_execveat_relative(target);
         }
         "thread-exec" => {
             let [target] = args else {

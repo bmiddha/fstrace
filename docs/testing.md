@@ -41,6 +41,8 @@ for ARM64, plus `docker`, `cpio`, `binutils`, `curl`, `zstd`, and `sudo`.
 Cross-architecture guests use TCG rather than KVM. ARM64 tests require kernel
 6.0+ for BPF trampolines. Legacy syscall scenarios use libc wrappers that issue
 the corresponding `*at` calls on ARM64; expected reports remain identical.
+The exec scenarios cover successful exec, non-leader thread exec, and relative
+`execveat` directory fds, including ARM64's reset of argument registers on exec.
 
 ### Testing specific kernel versions
 

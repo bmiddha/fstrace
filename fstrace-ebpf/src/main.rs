@@ -54,6 +54,8 @@ const CHILD_PID_OFFSET_DATALOC: u32 = 20;
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct ExecPath {
+    dirfd: i64,
+    flags: i64,
     len: u32,
     bytes: [u8; PATH_MAX],
 }
@@ -288,6 +290,18 @@ fn capture_exec_path(ctx: &FEntryContext, syscall: Syscall, path_arg: u8) -> u32
 
     unsafe {
         let path_ptr = reg(regs_ptr, path_arg);
+        // ARM64 start_thread resets pt_regs during successful exec, including
+        // the directory fd and flags needed to resolve relative execveat.
+        (*scratch).dirfd = if syscall == Syscall::Execveat {
+            reg(regs_ptr, 0) as i32 as i64
+        } else {
+            0
+        };
+        (*scratch).flags = if syscall == Syscall::Execveat {
+            reg(regs_ptr, 4) as i64
+        } else {
+            0
+        };
         (*scratch).len = read_user_path(path_ptr, &mut (*scratch).bytes);
         let path_read_ns = if path_start_ns != 0 {
             bpf_ktime_get_ns() - path_start_ns
@@ -380,6 +394,8 @@ fn handle(ctx: &FExitContext, syscall: Syscall, spec: Spec, captured_exec: bool)
         let mut used_captured_path = false;
         if captured_exec && let Some(saved) = EXEC_PATHS.get_ptr(&exec_task) {
             let saved = &*saved;
+            (*ev).dirfd = saved.dirfd;
+            (*ev).flags = saved.flags;
             let len = saved.len.min(PATH_MAX as u32);
             if bpf_probe_read_kernel_buf(saved.bytes.as_ptr(), &mut (*ev).path).is_ok() {
                 (*ev).path_len = len;

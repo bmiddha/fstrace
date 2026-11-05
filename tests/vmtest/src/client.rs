@@ -471,6 +471,11 @@ pub fn run() -> Result<()> {
     )?;
     exec_path_test(
         &mut t,
+        "execveat preserves relative directory fd across exec",
+        Some("execveat-relative"),
+    )?;
+    exec_path_test(
+        &mut t,
         "thread exec path survives de_thread",
         Some("thread-exec"),
     )?;
