@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "22"
       - uses: actions/download-artifact@v5
         with:
           pattern: npm-binaries-*
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "22"
       - uses: actions/download-artifact@v5
         with:
           name: npm-packages
@@ -68,7 +68,7 @@ jobs:
       - run: node node/test-packed.mjs
       - name: Test packed installs on musl
         run: |
-          docker run --rm -v "$PWD:/workspace:ro" -w /workspace node:24-alpine \
+          docker run --rm -v "$PWD:/workspace:ro" -w /workspace node:22-alpine \
             sh -c 'node --test node/tests/launcher.test.cjs && node node/test-packed.mjs'
 
   publish:

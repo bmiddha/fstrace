@@ -72,12 +72,14 @@ try {
     const install = await run('npm', [
       'install', ...(global ? ['--global'] : []),
       '--prefix', prefix, '--registry', registry, '--cache', path.join(temporary, 'cache'),
-      '--ignore-scripts', '--no-audit', '--no-fund', wrapper
+      '--ignore-scripts', '--engine-strict', '--no-audit', '--no-fund', wrapper
     ]);
     assert.equal(install.status, 0, install.stderr);
     const modules = path.join(prefix, global ? 'lib/node_modules' : 'node_modules');
     const packageRoot = path.join(modules, '@fstrace');
     const require = createRequire(path.join(packageRoot, 'fstrace/resolve.cjs'));
+    assert.equal(require('./package.json').engines.node, '>=22');
+    assert.equal(require(`@fstrace/linux-${process.arch}/package.json`).engines.node, '>=22');
     const installedPlatform = path.dirname(require.resolve(
       `@fstrace/linux-${process.arch}/package.json`
     ));

@@ -23,7 +23,7 @@ sudo fstrace-daemon &
 fstrace cat /etc/hostname 3>&1
 ```
 
-Node.js **18+**, `sh`, `dirname`, and `readlink` must be available on `PATH`
+Node.js **22+**, `sh`, `dirname`, and `readlink` must be available on `PATH`
 when launching either command, including under `sudo`. npm must install optional
 dependencies; `--omit=optional` leaves no native binary to run. The daemon still
 requires root/BPF privileges and a supported Linux kernel (x64 5.8+, ARM64 6.0+
@@ -64,7 +64,7 @@ real local and global installs, and deleting the platform package verifies the
 missing-dependency diagnostic. No registry account or network publication is
 needed. Launcher fixtures separately verify argument quoting, environment,
 working directory, I/O, inherited FD 3 and FD 4, exit codes, and signal status.
-CI performs these checks on native Linux x64 and ARM64 runners, with both
+CI performs these checks on Node.js 22 on native Linux x64 and ARM64 runners, with both
 glibc userspace and an Alpine/musl container.
 
 ## Publishing prerequisites
@@ -85,8 +85,10 @@ The manually dispatched **npm distribution** workflow defaults to
 **`publish: false`**: it only builds, packs, tests, and uploads artifacts.
 It does not publish on pushes or pull requests. After setup and release review,
 dispatch it on `vVERSION` with `publish: true` to publish public packages using
-OIDC trusted publishing and provenance (no long-lived npm token). Node 24
-provides a recent npm supporting trusted publishing. Both architecture install
+OIDC trusted publishing and provenance (no long-lived npm token). The publish job
+uses Node 24 to provide a recent npm supporting trusted publishing; this is
+release tooling, not a higher runtime minimum. Packing and install tests run
+on the supported minimum, Node.js 22. Both architecture install
 tests must pass before publishing, and the publish job rejects a nonmatching tag.
 
 The platform packages publish **before** the wrapper so a new wrapper cannot

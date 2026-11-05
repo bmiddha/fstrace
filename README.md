@@ -29,7 +29,7 @@ npm i -g @fstrace/fstrace
 ```
 
 Supports **Linux x64 and ARM64**, on both glibc and musl distributions, with
-Node.js 18+ available on `PATH`. npm selects the matching optional platform
+Node.js 22+ available on `PATH`. npm selects the matching optional platform
 package containing fully static binaries; do not omit optional dependencies.
 The installed commands are still `fstrace` and `fstrace-daemon`.
 See [npm releases](docs/npm-releases.md) for staging and publishing.

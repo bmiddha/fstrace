@@ -2,7 +2,7 @@
 	"image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
 	"features": {
 		"ghcr.io/devcontainers/features/node:2": {
-			"version": "18"
+			"version": "22"
 		}
 	},
 	"onCreateCommand": "rustup show && rustup component add rust-src clippy rustfmt && sudo apt-get update -qq && sudo apt-get install -y zstd && curl -fsSL https://github.com/aya-rs/bpf-linker/releases/download/v0.13.0/bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst | tar --zstd -xf - -C \"$HOME/.cargo/bin\"",

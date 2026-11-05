@@ -130,5 +130,5 @@ cross-build an image, use `cargo xtask docker-build --arch aarch64` (or
 installable `.tgz` files to `dist/npm/`: `@fstrace/fstrace`,
 `@fstrace/linux-x64`, and `@fstrace/linux-arm64`. Use
 `cargo xtask npm-dist --skip-build` to pack existing musl tarballs in `dist/`.
-Node.js 18+ and npm are required for packing. See
+Node.js 22+ and npm are required for packing. See
 [npm releases](npm-releases.md) for versioning, tests, and publishing setup.

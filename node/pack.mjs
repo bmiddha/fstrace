@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
+assert(Number(process.versions.node.split('.')[0]) >= 22, 'packing requires Node.js 22 or newer');
+
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const skipBuild = process.argv.slice(2).includes('--skip-build');
 assert(process.argv.slice(2).every(arg => arg === '--skip-build'), 'usage: node node/pack.mjs [--skip-build]');
@@ -18,10 +20,12 @@ const platforms = [
 const wrapper = JSON.parse(fs.readFileSync(path.join(root, 'node/fstrace/package.json')));
 assert.equal(wrapper.version, version, 'bump Rust and all npm package versions together');
 assert.equal(wrapper.name, '@fstrace/fstrace');
+assert.equal(wrapper.engines.node, '>=22', 'the wrapper requires Node.js 22 or newer');
 for (const { arch } of platforms) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, `node/linux-${arch}/package.json`)));
   assert.equal(manifest.version, version, 'bump Rust and all npm package versions together');
   assert.equal(manifest.name, `@fstrace/linux-${arch}`);
+  assert.equal(manifest.engines.node, wrapper.engines.node, 'all npm packages must share the Node.js minimum');
   assert.deepEqual(manifest.os, ['linux']);
   assert.deepEqual(manifest.cpu, [arch]);
   assert(!manifest.libc, 'static binaries support both glibc and musl hosts');

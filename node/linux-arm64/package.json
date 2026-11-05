@@ -9,6 +9,9 @@
   },
   "os": ["linux"],
   "cpu": ["arm64"],
+  "engines": {
+    "node": ">=22"
+  },
   "files": ["bin/fstrace", "bin/fstrace-daemon", "README.md"],
   "publishConfig": {
     "access": "public"
