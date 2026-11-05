@@ -1,12 +1,12 @@
 #!/bin/bash
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-FSTRACE="$SCRIPT_DIR/../build/fstrace"
+FSTRACE="${1:-$SCRIPT_DIR/../build/fstrace}"
 
 function test_signal_passthrough() {
     local signal=$1
     local expected_exit_code=$2
-    $FSTRACE bash -c "
+    "$FSTRACE" bash -c "
 sleep 10
 " &
     FSTRACE_PID=$!

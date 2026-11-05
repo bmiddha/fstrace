@@ -2,29 +2,9 @@ name: ci
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
 jobs:
-  cmake-release:
-    name: CMake Build and Test
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Build Project (Release)
-      uses: threeal/cmake-action@v2.1.0
-      with:
-        options: |
-          CMAKE_BUILD_TYPE=Release
-
-    - name: Test Project (Release)
-      uses: threeal/ctest-action@v1.1.0
-
-    - name: Build Project (Debug)
-      uses: threeal/cmake-action@v2.1.0
-      with:
-        options: |
-          CMAKE_BUILD_TYPE=Debug
-
-    - name: Test Project (Debug)
-      uses: threeal/ctest-action@v1.1.0
+  build:
+    uses: ./.github/workflows/build.yml

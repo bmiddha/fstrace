@@ -6,6 +6,18 @@ project(
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_DEBUG_POSTFIX -debug)
 
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  message(FATAL_ERROR "fstrace requires Linux")
+endif()
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  set(FSTRACE_NODE_ARCH arm64)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+  set(FSTRACE_NODE_ARCH x64)
+else()
+  message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   message(STATUS "Building in debug mode")
   set(CMAKE_BUILD_TYPE Debug)
@@ -42,17 +54,19 @@ endif()
 
 add_custom_command(
     TARGET fstrace POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        ${PROJECT_SOURCE_DIR}/node/fstrace/bin/${FSTRACE_NODE_ARCH}
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:fstrace>
-        ${PROJECT_SOURCE_DIR}/node/fstrace/$<TARGET_FILE_NAME:fstrace>
+        ${PROJECT_SOURCE_DIR}/node/fstrace/bin/${FSTRACE_NODE_ARCH}/$<TARGET_FILE_NAME:fstrace>
 )
 
 enable_testing()
 
 include(CTest)
 
-add_test(NAME exit-code-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/exit-code-passthrough.sh)
-add_test(NAME signal-passthrough COMMAND ${PROJECT_SOURCE_DIR}/tests/signal-passthrough.sh)
+add_test(NAME exit-code-passthrough COMMAND bash ${PROJECT_SOURCE_DIR}/tests/exit-code-passthrough.sh $<TARGET_FILE:fstrace>)
+add_test(NAME signal-passthrough COMMAND bash ${PROJECT_SOURCE_DIR}/tests/signal-passthrough.sh $<TARGET_FILE:fstrace>)
 
 
 add_executable(

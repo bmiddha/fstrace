@@ -1,0 +1,45 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches package version
+        run: |
+          version=$(node -p "require('./node/fstrace/package.json').version")
+          test "$GITHUB_REF_NAME" = "v$version"
+
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: package
+      - name: Publish with npm trusted publishing
+        run: npm publish ./package/*.tgz --provenance --access public

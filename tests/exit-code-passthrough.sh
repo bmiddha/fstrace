@@ -1,12 +1,12 @@
 #!/bin/bash
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-FSTRACE="$SCRIPT_DIR/../build/fstrace"
+FSTRACE="${1:-$SCRIPT_DIR/../build/fstrace}"
 
 function test_exit_code_passthrough() {
     local exit_code=$1
 
-    $FSTRACE bash -c "exit $exit_code"
+    "$FSTRACE" bash -c "exit $exit_code"
     FSTRACE_EXIT_CODE=$?
 
     bash -c "exit $exit_code"

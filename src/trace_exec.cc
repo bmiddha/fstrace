@@ -20,7 +20,6 @@
 #include <unordered_set>
 #include <string>
 #include <stddef.h>
-#include <sys/reg.h>
 #include <sys/prctl.h>
 #include <linux/filter.h>
 #include <linux/seccomp.h>
@@ -127,32 +126,48 @@ int prepare_tracee()
       BPF_JUMP(BPF_JMP + BPF_JSET + BPF_K, AT_EMPTY_PATH, 0, 1),
       BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
       BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
-
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_close, 19, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_open, 18, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_creat, 17, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat2, 16, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_fchdir, 15, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_chdir, 14, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_execve, 13, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_unlink, 12, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rmdir, 11, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_rename, 10, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat, 9, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_renameat2, 8, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_symlinkat, 7, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_linkat, 6, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_link, 5, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_mkdir, 4, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_mkdirat, 3, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_truncate, 2, 0),
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_symlink, 1, 0),
-      BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
-      BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
   };
+  // Each syscall gets its own return so optional syscalls cannot invalidate jump offsets.
+  const unsigned int traced_syscalls[] = {
+      __NR_close,
+#ifdef __NR_open
+      __NR_open,
+#endif
+#ifdef __NR_creat
+      __NR_creat,
+#endif
+      __NR_openat2, __NR_fchdir, __NR_chdir, __NR_execve,
+#ifdef __NR_unlink
+      __NR_unlink,
+#endif
+#ifdef __NR_rmdir
+      __NR_rmdir,
+#endif
+#ifdef __NR_rename
+      __NR_rename,
+#endif
+      __NR_renameat, __NR_renameat2, __NR_symlinkat, __NR_linkat,
+#ifdef __NR_link
+      __NR_link,
+#endif
+#ifdef __NR_mkdir
+      __NR_mkdir,
+#endif
+      __NR_mkdirat, __NR_truncate,
+#ifdef __NR_symlink
+      __NR_symlink,
+#endif
+  };
+  std::vector<sock_filter> instructions(std::begin(filter), std::end(filter));
+  for (unsigned int nr : traced_syscalls)
+  {
+    instructions.push_back(BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, nr, 0, 1));
+    instructions.push_back(BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE));
+  }
+  instructions.push_back(BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW));
   struct sock_fprog prog = {
-      .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
-      .filter = filter,
+      .len = static_cast<unsigned short>(instructions.size()),
+      .filter = instructions.data(),
   };
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
   {
@@ -894,6 +909,7 @@ int run_tracer(pid_t child_pid)
         }
         // int open(const char *pathname, int flags);
         // int open(const char *pathname, int flags, mode_t mode);
+#ifdef __NR_open
         case __NR_open:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_open.path, PATH_MAX);
@@ -901,7 +917,9 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_open.path)
           break;
         }
+#endif
         // int creat(const char *pathname, mode_t mode);
+#ifdef __NR_creat
         case __NR_creat:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_open.path, PATH_MAX);
@@ -909,6 +927,7 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_open.path)
           break;
         }
+#endif
         // int openat(int dirfd, const char *pathname, int flags);
         // int openat(int dirfd, const char *pathname, int flags, mode_t mode);
         case __NR_openat:
@@ -931,6 +950,7 @@ int run_tracer(pid_t child_pid)
           break;
         }
         // ssize_t readlink(const char *pathname, char *buf, size_t bufsiz);
+#ifdef __NR_readlink
         case __NR_readlink:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_readlink.path,
@@ -938,6 +958,7 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_open.path)
           break;
         }
+#endif
         // ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t bufsiz);
         case __NR_readlinkat:
         {
@@ -948,6 +969,7 @@ int run_tracer(pid_t child_pid)
         }
         // int lstat(const char *pathname, struct stat *statbuf);
         // int stat(const char *pathname, struct stat *statbuf);
+#ifdef __NR_stat
         case __NR_stat:
         case __NR_lstat:
         {
@@ -956,6 +978,7 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_stat.path)
           break;
         }
+#endif
         // int statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf);
         case __NR_statx:
         {
@@ -985,6 +1008,7 @@ int run_tracer(pid_t child_pid)
           break;
         }
         // int access(const char *pathname, int mode);
+#ifdef __NR_access
         case __NR_access:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_access.path,
@@ -992,6 +1016,7 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_access.path)
           break;
         }
+#endif
         // int unlinkat(int dirfd, const char *pathname, int flags);
         case __NR_unlinkat:
         {
@@ -1001,6 +1026,7 @@ int run_tracer(pid_t child_pid)
           break;
         }
         // int unlink(const char *pathname);
+#ifdef __NR_unlink
         case __NR_unlink:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_unlink.path,
@@ -1008,7 +1034,9 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_unlink.path)
           break;
         }
+#endif
         // int rmdir(const char *pathname);
+#ifdef __NR_rmdir
         case __NR_rmdir:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_unlink.path,
@@ -1016,7 +1044,9 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_unlink.path)
           break;
         }
+#endif
         // int rename(const char *oldpath, const char *newpath);
+#ifdef __NR_rename
         case __NR_rename:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_rename.oldpath,
@@ -1026,6 +1056,7 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_rename.newpath)
           break;
         }
+#endif
         // int renameat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath);
         // int renameat2(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, unsigned int flags);
         case __NR_renameat2:
@@ -1049,7 +1080,9 @@ int run_tracer(pid_t child_pid)
         }
         // long getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
         // ssize_t getdents64(int fd, void *dirp, size_t count);
+#ifdef __NR_getdents
         case __NR_getdents:
+#endif
         case __NR_getdents64:
         {
           get_fd_path(child_pid, thread_op->fd_cache, arg0, thread_op->op_getdents.path);
@@ -1057,6 +1090,7 @@ int run_tracer(pid_t child_pid)
           break;
         }
         // int symlink(const char *target, const char *linkpath);
+#ifdef __NR_symlink
         case __NR_symlink:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg1, thread_op->op_link.linkpath,
@@ -1064,6 +1098,7 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_link.linkpath)
           break;
         }
+#endif
         // int symlinkat(const char *target, int newdirfd, const char *linkpath);
         case __NR_symlinkat:
         {
@@ -1081,6 +1116,7 @@ int run_tracer(pid_t child_pid)
           break;
         }
         // int link(const char *oldpath, const char *newpath);
+#ifdef __NR_link
         case __NR_link:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg1, thread_op->op_link.linkpath,
@@ -1088,13 +1124,16 @@ int run_tracer(pid_t child_pid)
           SYS_ENTER_PATH_FILTER(thread_op->op_link.linkpath)
           break;
         }
+#endif
         // int mkdir(const char *pathname, mode_t mode);
+#ifdef __NR_mkdir
         case __NR_mkdir:
         {
           read_maybe_relative_pathname_from_tracee(child_pid, thread_op->cwd, arg0, thread_op->op_mkdir.path, PATH_MAX);
           SYS_ENTER_PATH_FILTER(thread_op->op_mkdir.path)
           break;
         }
+#endif
         // int mkdirat(int dirfd, const char *pathname, mode_t mode);
         case __NR_mkdirat:
         {
@@ -1211,6 +1250,7 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("execve/execveat", access_type, file_type, path)
           break;
         }
+#ifdef __NR_creat
         case __NR_creat:
         {
           CONTINUE_TRACEE
@@ -1230,7 +1270,10 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("creat", access_type, file_type, path)
           break;
         }
+#endif
+#ifdef __NR_open
         case __NR_open:
+#endif
         case __NR_openat:
         case __NR_openat2:
         {
@@ -1277,7 +1320,9 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("open/openat/openat2", access_type, file_type, path)
           break;
         }
+#ifdef __NR_readlink
         case __NR_readlink:
+#endif
         case __NR_readlinkat:
         {
           CONTINUE_TRACEE
@@ -1319,8 +1364,10 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("statx", access_type, file_type, path)
           break;
         }
+#ifdef __NR_stat
         case __NR_lstat:
         case __NR_stat:
+#endif
         case __NR_newfstatat:
         {
           CONTINUE_TRACEE
@@ -1363,6 +1410,7 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("faccessat/faccessat2", access_type, file_type, path)
           break;
         }
+#ifdef __NR_access
         case __NR_access:
         {
           CONTINUE_TRACEE
@@ -1384,8 +1432,11 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("access", access_type, file_type, path)
           break;
         }
+#endif
         case __NR_unlinkat:
+#ifdef __NR_unlink
         case __NR_unlink:
+#endif
         {
           CONTINUE_TRACEE
           access_type = 'D';
@@ -1399,6 +1450,7 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("unlinkat/unlink", access_type, file_type, path)
           break;
         }
+#ifdef __NR_rmdir
         case __NR_rmdir:
         {
           CONTINUE_TRACEE
@@ -1413,7 +1465,10 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("rmdir", access_type, file_type, path)
           break;
         }
+#endif
+#ifdef __NR_rename
         case __NR_rename:
+#endif
         case __NR_renameat:
         case __NR_renameat2:
         {
@@ -1433,7 +1488,9 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("rename/renameat/renameat2", access_type, file_type, path)
           break;
         }
+#ifdef __NR_getdents
         case __NR_getdents:
+#endif
         case __NR_getdents64:
         {
           CONTINUE_TRACEE
@@ -1455,7 +1512,9 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("getdents/getdents64", access_type, file_type, path)
           break;
         }
+#ifdef __NR_symlink
         case __NR_symlink:
+#endif
         case __NR_symlinkat:
         {
           CONTINUE_TRACEE
@@ -1471,7 +1530,9 @@ int run_tracer(pid_t child_pid)
           break;
         }
         case __NR_linkat:
+#ifdef __NR_link
         case __NR_link:
+#endif
         {
           CONTINUE_TRACEE
           access_type = 'W';
@@ -1485,7 +1546,9 @@ int run_tracer(pid_t child_pid)
           LOG_ACCESS("linkat/link", access_type, file_type, path)
           break;
         }
+#ifdef __NR_mkdir
         case __NR_mkdir:
+#endif
         case __NR_mkdirat:
         {
           CONTINUE_TRACEE

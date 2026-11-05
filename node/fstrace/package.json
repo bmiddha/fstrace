@@ -14,7 +14,8 @@
     "linux"
   ],
   "cpu": [
-    "x64"
+    "x64",
+    "arm64"
   ],
   "libc": [
     "glibc"
@@ -22,6 +23,8 @@
   "files": [
     "fstrace",
     "fstrace-debug",
+    "bin/x64/",
+    "bin/arm64/",
     "README.md"
   ],
   "bin": {
@@ -29,6 +32,7 @@
     "fstrace-debug": "fstrace-debug"
   },
   "scripts": {
-    "prepare": "cp ../../README.md ."
+    "prepare": "cp ../../README.md .",
+    "prepack": "node verify-package.cjs"
   }
 }

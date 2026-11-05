@@ -167,7 +167,7 @@ void setup()
     sprintf(command, "rm -rf %s", tempdir);
     system(command);
   }
-  syscall(__NR_mkdir, tempdir, 0777);
+  syscall(__NR_mkdirat, AT_FDCWD, tempdir, 0777);
 
   for (int i = 0; i < num_test_files; i++)
   {
@@ -179,10 +179,10 @@ void setup()
     sprintf(dir, "%s/dir%d", tempdir, i);
     sprintf(fileLink, "%s/file%d.link", tempdir, i);
     sprintf(file, "%s/file%d", tempdir, i);
-    syscall(__NR_mkdir, dir, 0777);
-    syscall(__NR_open, file, O_CREAT | O_RDWR, 0777);
-    syscall(__NR_symlink, file, fileLink);
-    syscall(__NR_symlink, dir, dirLink);
+    syscall(__NR_mkdirat, AT_FDCWD, dir, 0777);
+    syscall(__NR_openat, AT_FDCWD, file, O_CREAT | O_RDWR, 0777);
+    syscall(__NR_symlinkat, file, AT_FDCWD, fileLink);
+    syscall(__NR_symlinkat, dir, AT_FDCWD, dirLink);
   }
 }
 
@@ -202,6 +202,7 @@ std::string filter_output(std::string output)
   return trimmed_output;
 }
 
+#ifdef __NR_creat
 void testfn_creat()
 {
   syscall(__NR_chdir, tempdir);
@@ -227,6 +228,9 @@ TEST(SyscallTestSuite, Creat)
       trimmed_output.c_str());
 }
 
+#endif
+
+#ifdef __NR_open
 void testfn_open()
 {
   syscall(__NR_chdir, tempdir);
@@ -260,6 +264,8 @@ TEST(SyscallTestSuite, Open)
       ,
       trimmed_output.c_str());
 }
+
+#endif
 
 void testfn_openat2()
 {
@@ -328,7 +334,7 @@ TEST(SyscallTestSuite, Openat2)
 void testfn_openat()
 {
   syscall(__NR_chdir, tempdir);
-  int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, tempdir, O_RDONLY | O_DIRECTORY);
   int tempfd;
 
   tempfd = syscall(__NR_openat, dirfd, path_file0, O_RDONLY);
@@ -377,6 +383,7 @@ TEST(SyscallTestSuite, Openat)
       ,
       trimmed_output.c_str());
 }
+#ifdef __NR_stat
 void testfn_stat()
 {
   struct stat statbuf;
@@ -407,11 +414,13 @@ TEST(SyscallTestSuite, Stat)
       trimmed_output.c_str());
 }
 
+#endif
+
 void testfn_newfstatat()
 {
   struct stat statbuf;
   syscall(__NR_chdir, tempdir);
-  int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, tempdir, O_RDONLY | O_DIRECTORY);
 
   // __NR_newfstatat AT_FDCWD relative path
   syscall(__NR_newfstatat, AT_FDCWD, path_file0_rel, &statbuf, 0);
@@ -476,6 +485,7 @@ TEST(SyscallTestSuite, Newfstatat)
       trimmed_output.c_str());
 }
 
+#ifdef __NR_lstat
 void testfn_lstat()
 {
   struct stat statbuf;
@@ -517,6 +527,8 @@ TEST(SyscallTestSuite, Lstat)
       trimmed_output.c_str());
 }
 
+#endif
+
 void testfn_statx()
 {
   // int statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf);
@@ -524,7 +536,7 @@ void testfn_statx()
   syscall(__NR_chdir, tempdir);
   int flags = AT_STATX_SYNC_AS_STAT;
   int mask = STATX_BASIC_STATS;
-  int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, tempdir, O_RDONLY | O_DIRECTORY);
 
   // __NR_statx dirfd relative path
   syscall(__NR_statx, dirfd, path_file0_rel, flags, mask, &statxbuf);
@@ -593,6 +605,14 @@ TEST(SyscallTestSuite, Statx)
       trimmed_output.c_str());
 }
 
+void expect_exec_accesses(const std::string &output, bool opened_directory = false)
+{
+  // The system cat's runtime dependencies vary across distributions and architectures.
+  EXPECT_PRED3(SubstringCountPredicate, output, std::string("RF /usr/bin/cat\n"), 1);
+  EXPECT_PRED3(SubstringCountPredicate, output, std::string("RF /tmp/fstrace-test-dir/file0\n"), 1);
+  EXPECT_PRED3(SubstringCountPredicate, output, std::string("RD /usr/bin\n"), opened_directory ? 1 : 0);
+}
+
 void testfn_exec1()
 {
   char *argv[] = {"cat", path_file0, NULL};
@@ -606,16 +626,7 @@ TEST(SyscallTestSuite, Exec1)
   setup();
   std::string output = trace_testfn(testfn_exec1);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(
-
-      "RF /usr/bin/cat\n"
-      // "RX /etc/ld.so.preload\n"
-      "RF /etc/ld.so.cache\n"
-      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "RF /tmp/fstrace-test-dir/file0\n"
-
-      ,
-      trimmed_output.c_str());
+  expect_exec_accesses(trimmed_output);
 }
 void testfn_exec2()
 {
@@ -632,20 +643,11 @@ TEST(SyscallTestSuite, Exec2)
   setup();
   std::string output = trace_testfn(testfn_exec2);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(
-
-      "RF /usr/bin/cat\n"
-      // "RX /etc/ld.so.preload\n"
-      "RF /etc/ld.so.cache\n"
-      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "RF /tmp/fstrace-test-dir/file0\n"
-
-      ,
-      trimmed_output.c_str());
+  expect_exec_accesses(trimmed_output);
 }
 void testfn_exec3()
 {
-  int dirfd = syscall(__NR_open, path_usr_bin, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, path_usr_bin, O_RDONLY | O_DIRECTORY);
 
   char *argv[] = {"cat", path_file0, NULL};
   char *envp[] = {NULL};
@@ -659,22 +661,12 @@ TEST(SyscallTestSuite, Exec3)
   setup();
   std::string output = trace_testfn(testfn_exec3);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(
-
-      "RD /usr/bin\n"
-      "RF /usr/bin/cat\n"
-      // "RX /etc/ld.so.preload\n"
-      "RF /etc/ld.so.cache\n"
-      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "RF /tmp/fstrace-test-dir/file0\n"
-
-      ,
-      trimmed_output.c_str());
+  expect_exec_accesses(trimmed_output, true);
 }
 void testfn_exec4()
 {
   syscall(__NR_chdir, path_usr_bin);
-  int dirfd = syscall(__NR_open, path_usr_bin, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, path_usr_bin, O_RDONLY | O_DIRECTORY);
 
   char *argv[] = {"cat", path_file0, NULL};
   char *envp[] = {NULL};
@@ -688,21 +680,11 @@ TEST(SyscallTestSuite, Exec4)
   setup();
   std::string output = trace_testfn(testfn_exec4);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(
-
-      "RD /usr/bin\n"
-      "RF /usr/bin/cat\n"
-      // "RX /etc/ld.so.preload\n"
-      "RF /etc/ld.so.cache\n"
-      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "RF /tmp/fstrace-test-dir/file0\n"
-
-      ,
-      trimmed_output.c_str());
+  expect_exec_accesses(trimmed_output, true);
 }
 void testfn_exec5()
 {
-  int dirfd = syscall(__NR_open, path_usr_bin, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, path_usr_bin, O_RDONLY | O_DIRECTORY);
 
   char *argv[] = {"cat", path_file0, NULL};
   char *envp[] = {NULL};
@@ -716,22 +698,12 @@ TEST(SyscallTestSuite, Exec5)
   setup();
   std::string output = trace_testfn(testfn_exec5);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(
-
-      "RD /usr/bin\n"
-      "RF /usr/bin/cat\n"
-      // "RX /etc/ld.so.preload\n"
-      "RF /etc/ld.so.cache\n"
-      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "RF /tmp/fstrace-test-dir/file0\n"
-
-      ,
-      trimmed_output.c_str());
+  expect_exec_accesses(trimmed_output, true);
 }
 void testfn_exec6()
 {
   syscall(__NR_chdir, path_usr_bin);
-  int dirfd = syscall(__NR_open, path_usr_bin, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, path_usr_bin, O_RDONLY | O_DIRECTORY);
 
   char *argv[] = {"cat", path_file0, NULL};
   char *envp[] = {NULL};
@@ -745,17 +717,7 @@ TEST(SyscallTestSuite, Exec6)
   setup();
   std::string output = trace_testfn(testfn_exec6);
   std::string trimmed_output = filter_output(output);
-  EXPECT_STREQ(
-
-      "RD /usr/bin\n"
-      "RF /usr/bin/cat\n"
-      // "RX /etc/ld.so.preload\n"
-      "RF /etc/ld.so.cache\n"
-      "RF /lib/x86_64-linux-gnu/libc.so.6\n"
-      "RF /tmp/fstrace-test-dir/file0\n"
-
-      ,
-      trimmed_output.c_str());
+  expect_exec_accesses(trimmed_output, true);
 }
 
 void testfn_readlink()
@@ -765,6 +727,7 @@ void testfn_readlink()
   // int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
   char buf[PATH_MAX];
 
+#ifdef __NR_readlink
   // __NR_readlink absolute path
   syscall(__NR_readlink, path_file0_link, buf, sizeof(buf));
   syscall(__NR_readlink, path_doesnotexist_link, buf, sizeof(buf));
@@ -774,6 +737,7 @@ void testfn_readlink()
   syscall(__NR_readlink, path_file0_link_rel, buf, sizeof(buf));
   syscall(__NR_readlink, path_doesnotexist_link_rel, buf, sizeof(buf));
   syscall(__NR_readlink, path_dir0_link_rel, buf, sizeof(buf));
+#endif
 
   // __NR_readlinkat AT_FDCWD relative path
   syscall(__NR_readlinkat, AT_FDCWD, path_file0_link_rel, buf, sizeof(buf));
@@ -840,6 +804,7 @@ void testfn_access()
   syscall(__NR_chdir, tempdir);
   int dirfd = open(tempdir, O_DIRECTORY, 0);
 
+#ifdef __NR_access
   // __NR_access relative path
   syscall(__NR_access, path_file0_rel, R_OK);
   syscall(__NR_access, path_doesnotexist_rel, R_OK);
@@ -851,6 +816,7 @@ void testfn_access()
   syscall(__NR_access, path_doesnotexist, R_OK);
   syscall(__NR_access, path_dir0_trailing_slash, R_OK);
   syscall(__NR_access, path_dir0, R_OK);
+#endif
 
   // __NR_faccessat2 AT_FDCWD relative path
   syscall(__NR_faccessat2, AT_FDCWD, path_file0_rel, R_OK, 0);
@@ -976,10 +942,15 @@ TEST(SyscallTestSuite, Access)
 void testfn_unlink()
 {
   syscall(__NR_chdir, tempdir);
-  int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, tempdir, O_RDONLY | O_DIRECTORY);
 
+#ifdef __NR_unlink
   syscall(__NR_unlink, path_file0_rel);
   syscall(__NR_unlink, path_file1);
+#else
+  syscall(__NR_unlinkat, AT_FDCWD, path_file0_rel, 0);
+  syscall(__NR_unlinkat, AT_FDCWD, path_file1, 0);
+#endif
   syscall(__NR_unlinkat, AT_FDCWD, path_file2_rel_irregular, 0);
   syscall(__NR_unlinkat, AT_FDCWD, path_file3, 0);
   syscall(__NR_unlinkat, dirfd, path_file4_rel, 0);
@@ -1012,18 +983,24 @@ void testfn_getdents()
 {
   struct dirent dirent;
 
-  int dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
+  int dirfd = syscall(__NR_openat, AT_FDCWD, tempdir, O_RDONLY | O_DIRECTORY);
+#ifdef __NR_getdents
   syscall(__NR_getdents, dirfd, &dirent, sizeof(dirent));
+#endif
   syscall(__NR_getdents64, dirfd, &dirent, sizeof(dirent));
   syscall(__NR_close, dirfd);
 
-  int file0fd = syscall(__NR_open, path_file0, O_RDONLY);
+  int file0fd = syscall(__NR_openat, AT_FDCWD, path_file0, O_RDONLY);
+#ifdef __NR_getdents
   syscall(__NR_getdents, file0fd, &dirent, sizeof(dirent));
+#endif
   syscall(__NR_getdents64, file0fd, &dirent, sizeof(dirent));
   syscall(__NR_close, file0fd);
 
-  int doesNotExist = syscall(__NR_open, path_doesnotexist, O_RDONLY);
+  int doesNotExist = syscall(__NR_openat, AT_FDCWD, path_doesnotexist, O_RDONLY);
+#ifdef __NR_getdents
   syscall(__NR_getdents, doesNotExist, &dirent, sizeof(dirent));
+#endif
   syscall(__NR_getdents64, doesNotExist, &dirent, sizeof(dirent));
   syscall(__NR_close, doesNotExist);
 
@@ -1057,11 +1034,18 @@ void testfn_rmdir()
 {
   syscall(__NR_chdir, tempdir);
 
+#ifdef __NR_rmdir
   syscall(__NR_rmdir, path_dir0_trailing_slash_rel);
   syscall(__NR_rmdir, path_dir1_rel);
 
   syscall(__NR_rmdir, path_dir2_trailing_slash);
   syscall(__NR_rmdir, path_dir3);
+#else
+  syscall(__NR_unlinkat, AT_FDCWD, path_dir0_trailing_slash_rel, AT_REMOVEDIR);
+  syscall(__NR_unlinkat, AT_FDCWD, path_dir1_rel, AT_REMOVEDIR);
+  syscall(__NR_unlinkat, AT_FDCWD, path_dir2_trailing_slash, AT_REMOVEDIR);
+  syscall(__NR_unlinkat, AT_FDCWD, path_dir3, AT_REMOVEDIR);
+#endif
 
   syscall(__NR_exit, EXIT_SUCCESS);
 }
@@ -1087,8 +1071,13 @@ void testfn_rename()
   syscall(__NR_chdir, tempdir);
   int dirfd = open(tempdir, O_DIRECTORY, 0);
 
+#ifdef __NR_rename
   syscall(__NR_rename, path_file0_rel, path_newfile0_rel);
   syscall(__NR_rename, path_file1, path_newfile1);
+#else
+  syscall(__NR_renameat, AT_FDCWD, path_file0_rel, AT_FDCWD, path_newfile0_rel);
+  syscall(__NR_renameat, AT_FDCWD, path_file1, AT_FDCWD, path_newfile1);
+#endif
 
   syscall(__NR_renameat, AT_FDCWD, path_file2, dirfd, path_newfile2);
   syscall(__NR_renameat, AT_FDCWD, path_file3_rel, dirfd, path_newfile3_rel);
@@ -1132,9 +1121,15 @@ void testfn_mkdir()
   syscall(__NR_chdir, tempdir);
   int dirfd = open(tempdir, O_DIRECTORY, 0);
 
+#ifdef __NR_mkdir
   syscall(__NR_mkdir, path_newdir0, 0777);
   syscall(__NR_mkdir, path_newdir1_trailing_slash_rel, 0777);
   syscall(__NR_mkdir, path_newdir2_rel, 0777);
+#else
+  syscall(__NR_mkdirat, AT_FDCWD, path_newdir0, 0777);
+  syscall(__NR_mkdirat, AT_FDCWD, path_newdir1_trailing_slash_rel, 0777);
+  syscall(__NR_mkdirat, AT_FDCWD, path_newdir2_rel, 0777);
+#endif
 
   syscall(__NR_mkdirat, AT_FDCWD, path_newdir3, 0777);
   syscall(__NR_mkdirat, AT_FDCWD, path_newdir4_trailing_slash_rel, 0777);
@@ -1178,9 +1173,15 @@ void testfn_symlink()
   syscall(__NR_chdir, tempdir);
   int dirfd = open(tempdir, O_DIRECTORY, 0);
 
+#ifdef __NR_symlink
   syscall(__NR_symlink, path_file0, path_newlink0);
   syscall(__NR_symlink, path_file1_rel, path_newlink1_rel);
   syscall(__NR_symlink, path_file2, path_newlink2_rel);
+#else
+  syscall(__NR_symlinkat, path_file0, AT_FDCWD, path_newlink0);
+  syscall(__NR_symlinkat, path_file1_rel, AT_FDCWD, path_newlink1_rel);
+  syscall(__NR_symlinkat, path_file2, AT_FDCWD, path_newlink2_rel);
+#endif
 
   syscall(__NR_symlinkat, path_file3, AT_FDCWD, path_newlink3_rel);
   syscall(__NR_symlinkat, path_file3, AT_FDCWD, path_newlink4);
@@ -1217,8 +1218,13 @@ void testfn_link()
   syscall(__NR_chdir, tempdir);
   int dirfd = open(tempdir, O_DIRECTORY, 0);
 
+#ifdef __NR_link
   syscall(__NR_link, path_file0, path_newfile0);
   syscall(__NR_link, path_file1_rel, path_newfile1_rel);
+#else
+  syscall(__NR_linkat, AT_FDCWD, path_file0, AT_FDCWD, path_newfile0, 0);
+  syscall(__NR_linkat, AT_FDCWD, path_file1_rel, AT_FDCWD, path_newfile1_rel, 0);
+#endif
 
   syscall(__NR_linkat, AT_FDCWD, path_file2, AT_FDCWD, path_newfile2, 0);
   syscall(__NR_linkat, AT_FDCWD, path_file3_rel, AT_FDCWD, path_newfile3_rel, 0);
@@ -1262,10 +1268,10 @@ void testfn_filtering()
   struct dirent dirent;
 
   int dirfd;
-  dirfd = syscall(__NR_open, tempdir, O_RDONLY | O_DIRECTORY);
+  dirfd = syscall(__NR_openat, AT_FDCWD, tempdir, O_RDONLY | O_DIRECTORY);
   syscall(__NR_close, dirfd);
 
-  dirfd = syscall(__NR_open, uninteresting_path, O_RDONLY | O_DIRECTORY);
+  dirfd = syscall(__NR_openat, AT_FDCWD, uninteresting_path, O_RDONLY | O_DIRECTORY);
   syscall(__NR_getdents64, dirfd, &dirent, sizeof(dirent));
   syscall(__NR_close, dirfd);
 
@@ -1310,13 +1316,13 @@ TEST(SyscallTestSuite, Truncate)
 
 void testfn_child_process_fork()
 {
-  pid_t pid1 = syscall(__NR_fork);
+  pid_t pid1 = fork();
   if (pid1 == 0)
   {
-    pid_t pid2 = syscall(__NR_fork);
+    pid_t pid2 = fork();
     if (pid2 == 0)
     {
-      pid_t pid3 = syscall(__NR_fork);
+      pid_t pid3 = fork();
       if (pid3 == 0)
       {
         syscall(__NR_truncate, path_file0, 0);
@@ -1338,10 +1344,10 @@ void testfn_child_process_fork()
   }
   else
   {
-    pid_t pid4 = syscall(__NR_fork);
+    pid_t pid4 = fork();
     if (pid4 == 0)
     {
-      pid_t pid5 = syscall(__NR_fork);
+      pid_t pid5 = fork();
       if (pid5 == 0)
       {
         syscall(__NR_truncate, path_file3, 0);
@@ -1356,7 +1362,7 @@ void testfn_child_process_fork()
     }
     else
     {
-      pid_t pid6 = syscall(__NR_fork);
+      pid_t pid6 = fork();
       if (pid6 == 0)
       {
         syscall(__NR_truncate, path_file5, 0);
@@ -1364,7 +1370,7 @@ void testfn_child_process_fork()
       }
       else
       {
-        pid_t pid7 = syscall(__NR_fork);
+        pid_t pid7 = fork();
         if (pid7 == 0)
         {
           syscall(__NR_truncate, path_file6, 0);

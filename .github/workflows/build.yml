@@ -1,0 +1,111 @@
+name: Build and test
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  cmake:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify native runner architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: test "$(node -p process.arch)" = "$EXPECTED_ARCH"
+
+      - name: Test npm launcher and package validation
+        run: node --test tests/npm-package.test.cjs
+
+      - name: Build and test Release and Debug
+        run: |
+          for config in Release Debug; do
+            cmake -S . -B "build/$config" -DCMAKE_BUILD_TYPE="$config"
+            cmake --build "build/$config" --parallel 2
+            ctest --test-dir "build/$config" --output-on-failure --no-tests=error --timeout 60
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: node/fstrace/bin/${{ matrix.arch }}/
+          if-no-files-found: error
+
+  package:
+    name: Package both architectures
+    needs: cmake
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: node/fstrace/bin/x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64
+          path: node/fstrace/bin/arm64
+      - name: Pack both architectures
+        working-directory: node/fstrace
+        run: |
+          chmod +x fstrace fstrace-debug bin/x64/* bin/arm64/*
+          npm pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: node/fstrace/*.tgz
+          if-no-files-found: error
+
+  smoke:
+    name: Install npm package on ${{ matrix.arch }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify native runner architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: test "$(node -p process.arch)" = "$EXPECTED_ARCH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: package
+      - name: Install and exercise both commands
+        run: |
+          npm install --global ./package/*.tgz
+          for binary in fstrace fstrace-debug; do
+            "$binary" touch "$RUNNER_TEMP/fstrace-smoke" 3>report
+            grep -Fx "WF $RUNNER_TEMP/fstrace-smoke" report
+            bash tests/exit-code-passthrough.sh "$(command -v "$binary")"
+            bash tests/signal-passthrough.sh "$(command -v "$binary")"
+          done

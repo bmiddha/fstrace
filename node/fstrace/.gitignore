@@ -1,4 +1,4 @@
-*
-!*/
-!.gitignore
-!package.json
+README.md
+bin/x64/
+bin/arm64/
+*.tgz
