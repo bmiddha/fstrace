@@ -93,7 +93,7 @@ fn sudo(args: &[&str]) -> Command {
 
 /// Builds the initramfs at `out` from `image`'s rootfs plus the four static
 /// binaries in `bin_dir`.
-pub fn build_initramfs(image: &str, out: &Path, bin_dir: &Path) -> Result<()> {
+pub fn build_initramfs(image: &str, out: &Path, bin_dir: &Path, platform: &str) -> Result<()> {
     require_tool("docker")?;
     require_tool("cpio")?;
     require_tool("sudo")?;
@@ -118,35 +118,33 @@ pub fn build_initramfs(image: &str, out: &Path, bin_dir: &Path) -> Result<()> {
     std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
     std::fs::set_permissions(&stage, perms)?;
 
-    let result = stage_and_pack(image, out, bin_dir, &stage);
+    let result = stage_and_pack(image, out, bin_dir, &stage, platform);
     // Always clean up the (root-owned) staging tree.
     let _ = sudo(&["rm", "-rf", &stage.to_string_lossy()]).status();
     result
 }
 
-fn stage_and_pack(image: &str, out: &Path, bin_dir: &Path, stage: &Path) -> Result<()> {
+fn stage_and_pack(
+    image: &str,
+    out: &Path,
+    bin_dir: &Path,
+    stage: &Path,
+    platform: &str,
+) -> Result<()> {
     eprintln!("build-initramfs: exporting rootfs from {image}");
-    // Pull the image if it is not present locally.
-    let present = Command::new("docker")
-        .args(["image", "inspect", image])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !present {
-        run({
-            let mut c = Command::new("docker");
-            c.args(["pull", image]).stdout(Stdio::null());
-            c
-        })?;
-    }
+    // An image cached for the other architecture is not a usable guest rootfs.
+    run({
+        let mut c = Command::new("docker");
+        c.args(["pull", "--platform", platform, image])
+            .stdout(Stdio::null());
+        c
+    })?;
 
     // `docker export <container>` streams the flattened rootfs as a tar; pipe it
     // into `sudo tar -x` so setuid bits and ownership are preserved.
     let cid = {
         let out = Command::new("docker")
-            .args(["create", image, "true"])
+            .args(["create", "--platform", platform, image, "true"])
             .output()
             .context("docker create")?;
         if !out.status.success() {

@@ -17,6 +17,7 @@ use std::process::{Command, ExitCode};
 use anyhow::{Context as _, Result, bail};
 use clap::{Parser, Subcommand};
 
+mod arch;
 mod dist;
 mod docker;
 mod initramfs;
@@ -51,6 +52,9 @@ enum Cmd {
     Clean,
     /// Run the full end-to-end test suite inside a QEMU VM.
     VmTest {
+        /// Guest architecture (defaults to the host architecture).
+        #[arg(long, value_enum)]
+        arch: Option<arch::Architecture>,
         /// Kernel to boot (see `vm.rs` RELEASES): 5.10, 5.15, 6.1, 6.6, 6.12,
         /// 6.18, 7.1, 7.2-rc. Default: 6.12.
         #[arg(long, default_value = "6.12")]
@@ -60,7 +64,11 @@ enum Cmd {
         args: Vec<String>,
     },
     /// Build the `FROM scratch` daemon image (static musl `fstrace-daemon`).
-    DockerBuild,
+    DockerBuild {
+        /// Image architecture (defaults to the host architecture).
+        #[arg(long, value_enum)]
+        arch: Option<arch::Architecture>,
+    },
     /// Run the containerized daemon end-to-end (needs a rootful runtime).
     DockerTest,
     /// Cross-compile release tarballs for (arm64, x64) × (glibc, musl).
@@ -111,12 +119,21 @@ fn main() -> Result<ExitCode> {
         Cmd::Clean => {
             lifecycle::clean(&root)?;
         }
-        Cmd::VmTest { release, args } => {
+        Cmd::VmTest {
+            arch,
+            release,
+            args,
+        } => {
             let rel = vm::find_release(&release)?;
-            vm::run_vm_test(&root, rel, &args)?;
+            vm::run_vm_test(
+                &root,
+                rel,
+                arch.map_or_else(arch::Architecture::native, Ok)?,
+                &args,
+            )?;
         }
-        Cmd::DockerBuild => {
-            docker::docker_build(&root)?;
+        Cmd::DockerBuild { arch } => {
+            docker::docker_build(&root, arch.map_or_else(arch::Architecture::native, Ok)?)?;
         }
         Cmd::DockerTest => {
             docker::docker_test(&root)?;

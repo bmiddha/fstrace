@@ -15,7 +15,7 @@
 //! scrapes the serial console for the `FSTRACE_VM_RESULT:<code>` sentinel. The
 //! host never loads the eBPF programs, so a buggy program cannot affect it.
 //!
-//! Requirements on the host: `qemu-system-x86_64`, `docker`, `cpio`, `curl`,
+//! Requirements on the host: `qemu-system-{x86_64,aarch64}`, `docker`, `cpio`, `curl`,
 //! `sudo`, and (optionally) `/dev/kvm` for acceleration.
 
 use std::{
@@ -28,7 +28,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 
-use crate::{initramfs, kernel};
+use crate::{arch::Architecture, initramfs, kernel};
 
 /// A pinned upstream kernel to boot and run the privileged suite against. Each
 /// entry maps to a prebuilt image in the Ubuntu mainline archive.
@@ -91,9 +91,6 @@ pub const RELEASES: &[Release] = &[
 /// (only the kernel is the variable under test); override with `FSTRACE_VM_IMAGE`.
 const DEFAULT_IMAGE: &str = "docker.io/library/ubuntu:latest";
 
-/// In-guest binaries are built static against musl so they run on any rootfs.
-const MUSL_TARGET: &str = "x86_64-unknown-linux-musl";
-
 /// How long to wait for the guest to reach the result sentinel under KVM.
 const BOOT_TIMEOUT: Duration = Duration::from_secs(240);
 
@@ -155,8 +152,14 @@ fn run(mut cmd: Command) -> Result<()> {
 }
 
 /// Runs the full VM suite against `release`.
-pub fn run_vm_test(root: &Path, release: &Release, _extra_args: &[String]) -> Result<()> {
-    require_tool("qemu-system-x86_64", "")?;
+pub fn run_vm_test(
+    root: &Path,
+    release: &Release,
+    arch: Architecture,
+    _extra_args: &[String],
+) -> Result<()> {
+    let target = arch.musl_target();
+    require_tool(arch.qemu(), "")?;
     require_tool("docker", "")?;
     require_tool("cpio", "")?;
     log(&format!(
@@ -169,14 +172,14 @@ pub fn run_vm_test(root: &Path, release: &Release, _extra_args: &[String]) -> Re
     // variable across the support matrix.
     log("building static (musl) binaries + guest driver...");
     let mut add = Command::new("rustup");
-    add.args(["target", "add", MUSL_TARGET]);
+    add.args(["target", "add", target]);
     let _ = add.status();
     let mut build = Command::new(env!("CARGO"));
     build.current_dir(root).args([
         "build",
         "--release",
         "--target",
-        MUSL_TARGET,
+        target,
         "-p",
         "fstrace",
         "-p",
@@ -184,7 +187,7 @@ pub fn run_vm_test(root: &Path, release: &Release, _extra_args: &[String]) -> Re
     ]);
     run(build)?;
 
-    let release_dir = root.join("target").join(MUSL_TARGET).join("release");
+    let release_dir = root.join("target").join(target).join("release");
     for bin in [
         "fstrace",
         "fstrace-daemon",
@@ -202,19 +205,23 @@ pub fn run_vm_test(root: &Path, release: &Release, _extra_args: &[String]) -> Re
 
     // 1. Download the prebuilt kernel image (cached across runs).
     log(&format!("fetching prebuilt kernel {}...", release.version));
-    let bzimage = kernel::download_kernel(&cache, release.version, "amd64")?;
+    let bzimage = kernel::download_kernel(&cache, release.version, arch.debian())?;
     if !bzimage.is_file() {
         bail!("kernel image not found at {}", bzimage.display());
     }
 
     // 2. Build the initramfs from a Docker image rootfs + our static binaries.
     let image = std::env::var("FSTRACE_VM_IMAGE").unwrap_or_else(|_| DEFAULT_IMAGE.into());
-    let initramfs_path = cache.join(format!("initramfs-{}.cpio.gz", release.name));
+    let initramfs_path = cache.join(format!(
+        "initramfs-{}-{}.cpio.gz",
+        release.name,
+        arch.debian()
+    ));
     log(&format!("building initramfs from {image}..."));
-    initramfs::build_initramfs(&image, &initramfs_path, &release_dir)?;
+    initramfs::build_initramfs(&image, &initramfs_path, &release_dir, arch.platform())?;
 
     // 3. Direct-kernel-boot the pair and scrape the console for the sentinel.
-    boot_and_check(&bzimage, &initramfs_path)
+    boot_and_check(&bzimage, &initramfs_path, arch)
 }
 
 /// Boots QEMU with the kernel + initramfs, streams the serial console, and
@@ -225,15 +232,16 @@ pub fn run_vm_test(root: &Path, release: &Release, _extra_args: &[String]) -> Re
 /// actually work), so a KVM boot that dies without emitting a single console
 /// line is treated as an acceleration failure and transparently retried under
 /// TCG emulation.
-fn boot_and_check(bzimage: &Path, initramfs: &Path) -> Result<()> {
-    let kvm = Path::new("/dev/kvm")
-        .metadata()
-        .map(|m| !m.permissions().readonly())
-        .unwrap_or(false);
+fn boot_and_check(bzimage: &Path, initramfs: &Path, arch: Architecture) -> Result<()> {
+    let kvm = Architecture::native()? == arch
+        && Path::new("/dev/kvm")
+            .metadata()
+            .map(|m| !m.permissions().readonly())
+            .unwrap_or(false);
 
     if kvm {
         log("attempting KVM-accelerated boot...");
-        let outcome = run_qemu(bzimage, initramfs, true)?;
+        let outcome = run_qemu(bzimage, initramfs, arch, true)?;
         if outcome.result.is_some() {
             return interpret(outcome.result);
         }
@@ -250,7 +258,7 @@ fn boot_and_check(bzimage: &Path, initramfs: &Path) -> Result<()> {
         log("KVM unavailable — using slow TCG emulation");
     }
 
-    let outcome = run_qemu(bzimage, initramfs, false)?;
+    let outcome = run_qemu(bzimage, initramfs, arch, false)?;
     if outcome.result.is_none() && !outcome.stderr.trim().is_empty() {
         log(&format!("  (qemu: {})", outcome.stderr.trim()));
     }
@@ -287,8 +295,31 @@ struct QemuOutcome {
 }
 
 /// Runs QEMU once with the given acceleration mode and scrapes the console.
-fn run_qemu(bzimage: &Path, initramfs: &Path, use_kvm: bool) -> Result<QemuOutcome> {
-    let mut qemu = Command::new("qemu-system-x86_64");
+fn run_qemu(
+    bzimage: &Path,
+    initramfs: &Path,
+    arch: Architecture,
+    use_kvm: bool,
+) -> Result<QemuOutcome> {
+    let mut qemu = qemu_command(bzimage, initramfs, arch, use_kvm);
+    qemu.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    log("booting VM (direct kernel boot)...");
+    let mut child = qemu.spawn().context("spawning qemu")?;
+    let stdout = child.stdout.take().context("capturing qemu stdout")?;
+    let qemu_stderr = child.stderr.take().context("capturing qemu stderr")?;
+    let mut harness = Harness { qemu: Some(child) };
+
+    collect_console(&mut harness, stdout, qemu_stderr, use_kvm)
+}
+
+fn qemu_command(bzimage: &Path, initramfs: &Path, arch: Architecture, use_kvm: bool) -> Command {
+    let mut qemu = Command::new(arch.qemu());
+    if arch == Architecture::Aarch64 {
+        qemu.args(["-machine", "virt,gic-version=3"]);
+    }
     if use_kvm {
         qemu.args(["-enable-kvm", "-cpu", "host"]);
     } else {
@@ -309,18 +340,17 @@ fn run_qemu(bzimage: &Path, initramfs: &Path, use_kvm: bool) -> Result<QemuOutco
     .arg(bzimage)
     .arg("-initrd")
     .arg(initramfs)
-    .args(["-append", "console=ttyS0 panic=-1 loglevel=4"])
-    .args(["-serial", "stdio"])
-    .stdin(Stdio::null())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    .args(["-append", arch.console()])
+    .args(["-serial", "stdio"]);
+    qemu
+}
 
-    log("booting VM (direct kernel boot)...");
-    let mut child = qemu.spawn().context("spawning qemu")?;
-    let stdout = child.stdout.take().context("capturing qemu stdout")?;
-    let qemu_stderr = child.stderr.take().context("capturing qemu stderr")?;
-    let mut harness = Harness { qemu: Some(child) };
-
+fn collect_console(
+    harness: &mut Harness,
+    stdout: std::process::ChildStdout,
+    qemu_stderr: std::process::ChildStderr,
+    use_kvm: bool,
+) -> Result<QemuOutcome> {
     // Drain QEMU's own stderr on a worker thread so accel/setup errors surface.
     let stderr_reader = std::thread::spawn(move || {
         let mut r = BufReader::new(qemu_stderr);
@@ -330,6 +360,7 @@ fn run_qemu(bzimage: &Path, initramfs: &Path, use_kvm: bool) -> Result<QemuOutco
             collected.push_str(&line);
             line.clear();
         }
+
         // Keep only the last few lines to avoid noise.
         collected
             .lines()
@@ -420,4 +451,30 @@ fn run_qemu(bzimage: &Path, initramfs: &Path, use_kvm: bool) -> Result<QemuOutco
         produced_console,
         stderr,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn qemu_boot_settings_match_guest_architecture() {
+        for arch in [Architecture::X86_64, Architecture::Aarch64] {
+            for kvm in [false, true] {
+                let cmd = qemu_command(Path::new("kernel"), Path::new("initramfs"), arch, kvm);
+                assert_eq!(cmd.get_program(), arch.qemu());
+                let args: Vec<_> = cmd.get_args().map(|arg| arg.to_str().unwrap()).collect();
+                assert!(args.windows(2).any(|a| a == ["-append", arch.console()]));
+                assert_eq!(args.contains(&"-enable-kvm"), kvm);
+                assert!(
+                    args.windows(2)
+                        .any(|a| a == ["-cpu", if kvm { "host" } else { "max" }])
+                );
+                assert_eq!(
+                    args.contains(&"virt,gic-version=3"),
+                    arch == Architecture::Aarch64
+                );
+            }
+        }
+    }
 }

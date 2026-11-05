@@ -4,7 +4,8 @@
 //! syscalls against the shared test directory, so `fstrace` has something to
 //! trace. Setup of that directory happens in the client harness *outside*
 //! tracing, so this program only issues the traced calls. Deliberately thin:
-//! no clap, no error framework — just direct `syscall(2)` invocations, so the
+//! no clap, no error framework — just direct `syscall(2)` invocations (or libc
+//! wrappers for legacy calls that ARM64 implements through `*at`), so the
 //! traced process adds no incidental filesystem noise.
 //!
 //! Usage: `fstrace-scenario <name> [args...]`
@@ -47,9 +48,9 @@ fn close(fd: libc::c_long) {
 
 fn scenario_creat() {
     chdir(&cs(DIR));
-    let fd = sys!(libc::SYS_creat, d("/newfile0").as_ptr(), 0o666);
+    let fd = unsafe { libc::creat(d("/newfile0").as_ptr(), 0o666) } as libc::c_long;
     close(fd);
-    let fd = sys!(libc::SYS_creat, cs("./newfile1").as_ptr(), 0o666);
+    let fd = unsafe { libc::creat(cs("./newfile1").as_ptr(), 0o666) } as libc::c_long;
     close(fd);
 }
 
@@ -239,8 +240,10 @@ fn scenario_unlink() {
         cs(DIR).as_ptr(),
         libc::O_RDONLY | libc::O_DIRECTORY
     );
-    sys!(libc::SYS_unlink, cs("file0").as_ptr());
-    sys!(libc::SYS_unlink, d("/file1").as_ptr());
+    unsafe {
+        libc::unlink(cs("file0").as_ptr());
+        libc::unlink(d("/file1").as_ptr());
+    }
     sys!(
         libc::SYS_unlinkat,
         libc::AT_FDCWD,
@@ -255,10 +258,12 @@ fn scenario_unlink() {
 
 fn scenario_rmdir() {
     chdir(&cs(DIR));
-    sys!(libc::SYS_rmdir, cs("dir0/").as_ptr());
-    sys!(libc::SYS_rmdir, cs("dir1").as_ptr());
-    sys!(libc::SYS_rmdir, d("/dir2/").as_ptr());
-    sys!(libc::SYS_rmdir, d("/dir3").as_ptr());
+    unsafe {
+        libc::rmdir(cs("dir0/").as_ptr());
+        libc::rmdir(cs("dir1").as_ptr());
+        libc::rmdir(d("/dir2/").as_ptr());
+        libc::rmdir(d("/dir3").as_ptr());
+    }
 }
 
 fn scenario_rename() {
@@ -269,16 +274,10 @@ fn scenario_rename() {
         cs(DIR).as_ptr(),
         libc::O_DIRECTORY
     );
-    sys!(
-        libc::SYS_rename,
-        cs("file0").as_ptr(),
-        cs("./newfile0").as_ptr()
-    );
-    sys!(
-        libc::SYS_rename,
-        d("/file1").as_ptr(),
-        d("/newfile1").as_ptr()
-    );
+    unsafe {
+        libc::rename(cs("file0").as_ptr(), cs("./newfile0").as_ptr());
+        libc::rename(d("/file1").as_ptr(), d("/newfile1").as_ptr());
+    }
     sys!(
         libc::SYS_renameat,
         libc::AT_FDCWD,
@@ -320,9 +319,11 @@ fn scenario_mkdir() {
         cs(DIR).as_ptr(),
         libc::O_DIRECTORY
     );
-    sys!(libc::SYS_mkdir, d("/newdir0").as_ptr(), 0o777);
-    sys!(libc::SYS_mkdir, cs("./newdir1/").as_ptr(), 0o777);
-    sys!(libc::SYS_mkdir, cs("./newdir2").as_ptr(), 0o777);
+    unsafe {
+        libc::mkdir(d("/newdir0").as_ptr(), 0o777);
+        libc::mkdir(cs("./newdir1/").as_ptr(), 0o777);
+        libc::mkdir(cs("./newdir2").as_ptr(), 0o777);
+    }
     sys!(
         libc::SYS_mkdirat,
         libc::AT_FDCWD,
@@ -355,21 +356,11 @@ fn scenario_symlink() {
         cs(DIR).as_ptr(),
         libc::O_DIRECTORY
     );
-    sys!(
-        libc::SYS_symlink,
-        d("/file0").as_ptr(),
-        d("/newlink0").as_ptr()
-    );
-    sys!(
-        libc::SYS_symlink,
-        cs("file1").as_ptr(),
-        cs("./newlink1").as_ptr()
-    );
-    sys!(
-        libc::SYS_symlink,
-        d("/file2").as_ptr(),
-        cs("./newlink2").as_ptr()
-    );
+    unsafe {
+        libc::symlink(d("/file0").as_ptr(), d("/newlink0").as_ptr());
+        libc::symlink(cs("file1").as_ptr(), cs("./newlink1").as_ptr());
+        libc::symlink(d("/file2").as_ptr(), cs("./newlink2").as_ptr());
+    }
     sys!(
         libc::SYS_symlinkat,
         d("/file3").as_ptr(),
@@ -405,16 +396,10 @@ fn scenario_link() {
         cs(DIR).as_ptr(),
         libc::O_DIRECTORY
     );
-    sys!(
-        libc::SYS_link,
-        d("/file0").as_ptr(),
-        d("/newfile0").as_ptr()
-    );
-    sys!(
-        libc::SYS_link,
-        cs("file1").as_ptr(),
-        cs("./newfile1").as_ptr()
-    );
+    unsafe {
+        libc::link(d("/file0").as_ptr(), d("/newfile0").as_ptr());
+        libc::link(cs("file1").as_ptr(), cs("./newfile1").as_ptr());
+    }
     sys!(
         libc::SYS_linkat,
         libc::AT_FDCWD,

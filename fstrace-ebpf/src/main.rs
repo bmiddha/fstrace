@@ -13,6 +13,9 @@
 #![no_std]
 #![no_main]
 
+#[cfg(not(any(bpf_target_arch = "x86_64", bpf_target_arch = "aarch64")))]
+compile_error!("fstrace eBPF supports x86_64 and aarch64 only");
+
 #[cfg(bpf_target_arch = "aarch64")]
 use aya_ebpf::bindings::user_pt_regs;
 #[cfg(bpf_target_arch = "x86_64")]
@@ -33,6 +36,7 @@ use fstrace_common::{
 };
 
 /// `O_CREAT` from `<fcntl.h>` on Linux; `creat(2)` implies it.
+#[cfg(bpf_target_arch = "x86_64")]
 const O_CREAT: i64 = 0o100;
 
 /// Byte offset of `child_pid` in the `sched_process_fork` tracepoint record
@@ -100,6 +104,7 @@ enum Flags {
     /// Flags are the `pt_regs` argument at this index.
     Arg(u8),
     /// Flags are a fixed constant (e.g. `creat` implies `O_CREAT`).
+    #[cfg(bpf_target_arch = "x86_64")]
     Const(i64),
     /// Flags live in the first `u64` of a `struct open_how` pointed to by the
     /// `pt_regs` argument at this index (`openat2`).
@@ -364,6 +369,7 @@ fn handle(ctx: &FExitContext, syscall: Syscall, spec: Spec, captured_exec: bool)
         (*ev).flags = match spec.flags {
             Flags::None => 0,
             Flags::Arg(i) => reg(regs_ptr, i) as i64,
+            #[cfg(bpf_target_arch = "x86_64")]
             Flags::Const(c) => c,
             Flags::OpenHow(i) => {
                 let how_ptr = reg(regs_ptr, i);
@@ -426,8 +432,8 @@ fn handle(ctx: &FExitContext, syscall: Syscall, spec: Spec, captured_exec: bool)
 
 /// Generates a `fexit` program for a traced syscall.
 macro_rules! syscall_probe {
-    ($name:ident, $fn:literal, $sys:expr, $spec:expr) => {
-        #[fexit(function = $fn)]
+    ($name:ident, $sys:expr, $spec:expr) => {
+        #[fexit]
         pub fn $name(ctx: FExitContext) -> u32 {
             handle(&ctx, $sys, $spec, false)
         }
@@ -435,27 +441,25 @@ macro_rules! syscall_probe {
 }
 
 // --- open family ---------------------------------------------------------
+#[cfg(bpf_target_arch = "x86_64")]
 syscall_probe!(
     sys_open,
-    "__x64_sys_open",
     Syscall::Open,
     Spec::new().path1(0).flags(Flags::Arg(1))
 );
 syscall_probe!(
     sys_openat,
-    "__x64_sys_openat",
     Syscall::Openat,
     Spec::new().dirfd1(0).path1(1).flags(Flags::Arg(2))
 );
 syscall_probe!(
     sys_openat2,
-    "__x64_sys_openat2",
     Syscall::Openat2,
     Spec::new().dirfd1(0).path1(1).flags(Flags::OpenHow(2))
 );
+#[cfg(bpf_target_arch = "x86_64")]
 syscall_probe!(
     sys_creat,
-    "__x64_sys_creat",
     Syscall::Creat,
     Spec::new().path1(0).flags(Flags::Const(O_CREAT))
 );
@@ -465,122 +469,77 @@ syscall_probe!(
 // matching the original tracer's production seccomp filter.
 
 // --- delete --------------------------------------------------------------
-syscall_probe!(
-    sys_unlink,
-    "__x64_sys_unlink",
-    Syscall::Unlink,
-    Spec::new().path1(0)
-);
+#[cfg(bpf_target_arch = "x86_64")]
+syscall_probe!(sys_unlink, Syscall::Unlink, Spec::new().path1(0));
 syscall_probe!(
     sys_unlinkat,
-    "__x64_sys_unlinkat",
     Syscall::Unlinkat,
     Spec::new().dirfd1(0).path1(1).flags(Flags::Arg(2))
 );
-syscall_probe!(
-    sys_rmdir,
-    "__x64_sys_rmdir",
-    Syscall::Rmdir,
-    Spec::new().path1(0)
-);
+#[cfg(bpf_target_arch = "x86_64")]
+syscall_probe!(sys_rmdir, Syscall::Rmdir, Spec::new().path1(0));
 
 // --- rename --------------------------------------------------------------
-syscall_probe!(
-    sys_rename,
-    "__x64_sys_rename",
-    Syscall::Rename,
-    Spec::new().path1(0).path2(1)
-);
+#[cfg(bpf_target_arch = "x86_64")]
+syscall_probe!(sys_rename, Syscall::Rename, Spec::new().path1(0).path2(1));
 syscall_probe!(
     sys_renameat,
-    "__x64_sys_renameat",
     Syscall::Renameat,
     Spec::new().dirfd1(0).path1(1).dirfd2(2).path2(3)
 );
 syscall_probe!(
     sys_renameat2,
-    "__x64_sys_renameat2",
     Syscall::Renameat2,
     Spec::new().dirfd1(0).path1(1).dirfd2(2).path2(3)
 );
 
 // --- mkdir / link / symlink ---------------------------------------------
-syscall_probe!(
-    sys_mkdir,
-    "__x64_sys_mkdir",
-    Syscall::Mkdir,
-    Spec::new().path1(0)
-);
+#[cfg(bpf_target_arch = "x86_64")]
+syscall_probe!(sys_mkdir, Syscall::Mkdir, Spec::new().path1(0));
 syscall_probe!(
     sys_mkdirat,
-    "__x64_sys_mkdirat",
     Syscall::Mkdirat,
     Spec::new().dirfd1(0).path1(1)
 );
-syscall_probe!(
-    sys_link,
-    "__x64_sys_link",
-    Syscall::Link,
-    Spec::new().path1(1)
-);
+#[cfg(bpf_target_arch = "x86_64")]
+syscall_probe!(sys_link, Syscall::Link, Spec::new().path1(1));
 syscall_probe!(
     sys_linkat,
-    "__x64_sys_linkat",
     Syscall::Linkat,
     Spec::new().dirfd1(2).path1(3).flags(Flags::Arg(4))
 );
-syscall_probe!(
-    sys_symlink,
-    "__x64_sys_symlink",
-    Syscall::Symlink,
-    Spec::new().path1(1)
-);
+#[cfg(bpf_target_arch = "x86_64")]
+syscall_probe!(sys_symlink, Syscall::Symlink, Spec::new().path1(1));
 syscall_probe!(
     sys_symlinkat,
-    "__x64_sys_symlinkat",
     Syscall::Symlinkat,
     Spec::new().dirfd1(1).path1(2)
 );
 
 // --- truncate ------------------------------------------------------------
-syscall_probe!(
-    sys_truncate,
-    "__x64_sys_truncate",
-    Syscall::Truncate,
-    Spec::new().path1(0)
-);
+syscall_probe!(sys_truncate, Syscall::Truncate, Spec::new().path1(0));
 // getdents/getdents64 are likewise omitted: opening the directory is already
 // reported, and reporting every enumeration adds high-volume duplicate noise.
 
 // --- cwd / exec / close --------------------------------------------------
-syscall_probe!(
-    sys_chdir,
-    "__x64_sys_chdir",
-    Syscall::Chdir,
-    Spec::new().path1(0)
-);
-syscall_probe!(
-    sys_fchdir,
-    "__x64_sys_fchdir",
-    Syscall::Fchdir,
-    Spec::new().dirfd1(0)
-);
-#[fentry(function = "__x64_sys_execve")]
+syscall_probe!(sys_chdir, Syscall::Chdir, Spec::new().path1(0));
+syscall_probe!(sys_fchdir, Syscall::Fchdir, Spec::new().dirfd1(0));
+#[fentry]
 pub fn enter_execve(ctx: FEntryContext) -> u32 {
     capture_exec_path(&ctx, Syscall::Execve, 0)
 }
 
-#[fexit(function = "__x64_sys_execve")]
+#[fexit]
 pub fn sys_execve(ctx: FExitContext) -> u32 {
     handle(&ctx, Syscall::Execve, Spec::new().path1(0), true)
 }
 
-#[fentry(function = "__x64_sys_execveat")]
+#[fentry]
 pub fn enter_execveat(ctx: FEntryContext) -> u32 {
     capture_exec_path(&ctx, Syscall::Execveat, 1)
 }
 
-#[fexit(function = "__x64_sys_execveat")]
+#[fexit]
 pub fn sys_execveat(ctx: FExitContext) -> u32 {
     handle(
         &ctx,
@@ -589,12 +548,7 @@ pub fn sys_execveat(ctx: FExitContext) -> u32 {
         true,
     )
 }
-syscall_probe!(
-    sys_close,
-    "__x64_sys_close",
-    Syscall::Close,
-    Spec::new().dirfd1(0)
-);
+syscall_probe!(sys_close, Syscall::Close, Spec::new().dirfd1(0));
 
 /// Emits a minimal lifecycle event (fork/exit) into the ring buffer so the
 /// userspace daemon can maintain its pid→client routing table. `kind` is

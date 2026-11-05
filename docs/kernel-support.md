@@ -12,8 +12,10 @@ lower bound on the kernel version.
 | `fexit` / BPF trampolines                 | 5.5        | Every syscall probe is an `fexit` program         |
 | BPF ring buffer (`BPF_MAP_TYPE_RINGBUF`)  | 5.8        | The `EVENTS` map that carries events to userspace |
 
-**Minimum supported kernel: 5.8** (the ring buffer is the newest hard
-requirement). The kernel must also be built with BTF, which every mainstream
+**Minimum supported kernel: x64 5.8, ARM64 6.0.** ARM64 BPF trampolines arrived
+in 6.0; older ARM64 kernels cannot attach the required fentry/fexit probes even
+when they have BTF and ring buffers. The kernel must also be built with BTF
+and BPF trampoline support, which every mainstream
 distro kernel and every upstream release since ~5.5 enables.
 
 ### Features missing on older kernels
@@ -62,6 +64,10 @@ Override the userspace image with `FSTRACE_VM_IMAGE` (verified against both
 `docker.io/library/ubuntu:latest` and `docker.io/library/alpine:latest`).
 
 ## Verified matrix
+
+The historical results below are **x64** results, not evidence of ARM64 runtime
+coverage. CI additionally runs ARM64 on the listed 6.1+ kernels; 5.10 and 5.15
+are excluded on ARM64 because they predate its BPF trampoline support.
 
 The matrix covers every active upstream **longterm** series, plus the current
 **stable** and **mainline** lines released since the newest LTS. Every kernel

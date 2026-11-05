@@ -11,6 +11,21 @@ use aya::{
 };
 use tracing::{trace, warn};
 
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+compile_error!("fstrace supports Linux x86_64 and aarch64 targets only");
+
+fn syscall_target(syscall: &str) -> String {
+    let arch = if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else {
+        "x64"
+    };
+    format!("__{arch}_sys_{syscall}")
+}
+
 /// Ensures tracefs is mounted at `/sys/kernel/tracing` so that tracepoint
 /// attachment (which reads event ids from tracefs) works. If tracefs is already
 /// present, or is instead available under debugfs, this is a no-op. A failed
@@ -84,7 +99,8 @@ fn fork_child_pid_offset() -> u32 {
 
 /// Loads the embedded eBPF object and attaches every program:
 /// `enter_*` and `sys_*` become fentry/fexit probes on the matching
-/// `__x64_sys_*` kernel function, and `sched_*` become tracepoints. Per-syscall
+/// architecture's `__x64_sys_*` / `__arm64_sys_*` kernel function, and
+/// `sched_*` become tracepoints. Per-syscall
 /// fexit attach failures are warnings (some syscalls may not exist on every
 /// kernel); exec fentry and lifecycle tracepoint failures are fatal because
 /// correct exec paths and pid scoping depend on them.
@@ -138,16 +154,14 @@ pub fn load_programs(profile_enabled: bool) -> anyhow::Result<Ebpf> {
     for name in names {
         if let Some(program) = ebpf.program_mut(&name) {
             if let Some(syscall) = name.strip_prefix("enter_") {
-                let kernel_fn = format!("__x64_sys_{syscall}");
+                let kernel_fn = syscall_target(syscall);
                 let prog: &mut FEntry = program.try_into()?;
                 prog.load(&kernel_fn, &btf)
                     .with_context(|| format!("loading {name} for {kernel_fn}"))?;
                 prog.attach()
                     .with_context(|| format!("attaching {name} to {kernel_fn}"))?;
                 trace!(program = %name, target = %kernel_fn, "attached fentry probe");
-            } else if let Some(kernel_fn) =
-                name.strip_prefix("sys_").map(|_| format!("__x64_{name}"))
-            {
+            } else if let Some(kernel_fn) = name.strip_prefix("sys_").map(syscall_target) {
                 let required_exec_probe = matches!(name.as_str(), "sys_execve" | "sys_execveat");
                 let prog: &mut FExit = match program.try_into() {
                     Ok(prog) => prog,
@@ -183,4 +197,21 @@ pub fn load_programs(profile_enabled: bool) -> anyhow::Result<Ebpf> {
     }
 
     Ok(ebpf)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn syscall_targets_match_userspace_architecture() {
+        let prefix = if cfg!(target_arch = "aarch64") {
+            "__arm64_sys_"
+        } else {
+            "__x64_sys_"
+        };
+        for syscall in ["openat", "execve", "execveat", "renameat2"] {
+            assert_eq!(syscall_target(syscall), format!("{prefix}{syscall}"));
+        }
+    }
 }

@@ -11,7 +11,10 @@
   privileges.
 - The [Rust toolchain](https://rustup.rs/). The pinned nightly and components are
   declared in `rust-toolchain.toml`.
-- [`bpf-linker`](https://github.com/aya-rs/bpf-linker): `cargo install bpf-linker`.
+- [`bpf-linker`](https://github.com/aya-rs/bpf-linker): install the matching
+  prebuilt binary from its GitHub releases into a directory on `PATH`. CI uses
+  v0.13.0. Building it with `cargo install` additionally requires the LLVM
+  version expected by that release; it is not a self-contained Rust-only install.
 
 ## Build & run
 
@@ -96,18 +99,26 @@ cargo xtask dist
 cargo xtask dist --target aarch64-unknown-linux-musl
 ```
 
-The eBPF object is compiled per userspace arch automatically (the loader reads
-syscall-argument registers in an arch-aware way), so the same command produces a
-working tracer on both x86-64 and aarch64.
+The eBPF object is compiled for the userspace target architecture automatically,
+including during cross-compilation. The loader attaches to `__x64_sys_*` on
+x86-64 and `__arm64_sys_*` on ARM64. ARM64 has no legacy `open`, `creat`,
+`unlink`, `rmdir`, `rename`, `mkdir`, `link`, or `symlink` syscall; the matching
+`*at` probes capture those operations instead. Both architectures use the same
+report format. ARM64 needs kernel 6.0+ with BPF trampoline support; see
+[Kernel version support](kernel-support.md).
 
 ### Toolchain requirements
 
-- `rustup target add` is run for you by `cargo xtask dist`, but the aarch64
-  targets need a cross **linker** on the host:
+- `rustup target add` is run for you by `cargo xtask dist`. The aarch64
+  **glibc** target needs a cross linker on an x64 Linux host:
 
   ```bash
   sudo apt-get install -y gcc-aarch64-linux-gnu
   ```
 
-  This is wired up in [`.cargo/config.toml`](../.cargo/config.toml). The musl
+  This is wired up in [`.cargo/config.toml`](../.cargo/config.toml). Both musl
   targets link fully static via `rust-lld` and need no extra C toolchain.
+
+`cargo xtask docker-build` builds for the host architecture by default. To
+cross-build an image, use `cargo xtask docker-build --arch aarch64` (or
+`--arch x86-64`); the binary and image platform are selected together.

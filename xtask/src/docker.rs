@@ -18,7 +18,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 
-const MUSL_TARGET: &str = "x86_64-unknown-linux-musl";
+use crate::arch::Architecture;
+
 const IMAGE_TAG: &str = "fstrace-daemon:xtask-test";
 
 fn log(msg: &str) {
@@ -52,10 +53,11 @@ fn container_runtime() -> Result<String> {
 }
 
 /// Builds the fully static musl `fstrace-daemon`, returning its path.
-fn build_static_daemon(root: &Path) -> Result<PathBuf> {
+fn build_static_daemon(root: &Path, arch: Architecture) -> Result<PathBuf> {
+    let target = arch.musl_target();
     log("adding musl target (idempotent)...");
     let mut add = Command::new("rustup");
-    add.args(["target", "add", MUSL_TARGET]);
+    add.args(["target", "add", target]);
     // Non-fatal: the target may already be installed, or rustup absent in an
     // environment that provides the target another way.
     let _ = add.status();
@@ -66,7 +68,7 @@ fn build_static_daemon(root: &Path) -> Result<PathBuf> {
         "build",
         "--release",
         "--target",
-        MUSL_TARGET,
+        target,
         "-p",
         "fstrace",
         "--bin",
@@ -76,7 +78,7 @@ fn build_static_daemon(root: &Path) -> Result<PathBuf> {
 
     let bin = root
         .join("target")
-        .join(MUSL_TARGET)
+        .join(target)
         .join("release/fstrace-daemon");
     if !bin.is_file() {
         bail!("missing {} — build failed", bin.display());
@@ -85,9 +87,9 @@ fn build_static_daemon(root: &Path) -> Result<PathBuf> {
 }
 
 /// Builds the `FROM scratch` daemon image. Returns the runtime used.
-pub fn docker_build(root: &Path) -> Result<String> {
+pub fn docker_build(root: &Path, arch: Architecture) -> Result<String> {
     let rt = container_runtime()?;
-    let bin = build_static_daemon(root)?;
+    let bin = build_static_daemon(root, arch)?;
     let dockerfile = root.join("packaging/docker/Dockerfile");
 
     // Assemble a minimal build context (just the binary) so we don't tar the
@@ -101,6 +103,7 @@ pub fn docker_build(root: &Path) -> Result<String> {
     log(&format!("building image {IMAGE_TAG} with {rt}..."));
     let mut cmd = Command::new(&rt);
     cmd.arg("build")
+        .args(["--platform", arch.platform()])
         .arg("-f")
         .arg(&dockerfile)
         .arg("-t")
@@ -155,7 +158,7 @@ fn dump_logs(rt: &str, name: &str) {
 
 /// Runs the full container end-to-end test.
 pub fn docker_test(root: &Path) -> Result<()> {
-    let rt = docker_build(root)?;
+    let rt = docker_build(root, Architecture::native()?)?;
     let client = build_client(root)?;
 
     // Verify a real host kernel with BTF is present (the daemon reads it).

@@ -15,10 +15,10 @@ use crate::{
 };
 
 // Open flags (subset used for classification).
-const O_WRONLY: i64 = 0o1;
-const O_RDWR: i64 = 0o2;
-const O_CREAT: i64 = 0o100;
-const O_DIRECTORY: i64 = 0o200000;
+const O_WRONLY: i64 = libc::O_WRONLY as i64;
+const O_RDWR: i64 = libc::O_RDWR as i64;
+const O_CREAT: i64 = libc::O_CREAT as i64;
+const O_DIRECTORY: i64 = libc::O_DIRECTORY as i64;
 
 /// A single classified filesystem access.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -446,7 +446,7 @@ mod tests {
         let mut e = engine();
         let mut ev = event(Syscall::Open);
         set_path(&mut ev, "/tmp");
-        ev.flags = O_DIRECTORY;
+        ev.flags = libc::O_DIRECTORY as i64;
         ev.ret = 3;
         let emit = e.process(&ev).unwrap();
         assert_eq!(emit.accesses[0].file, FileType::Directory);

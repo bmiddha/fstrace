@@ -19,6 +19,9 @@ traced process carries no harness noise):
 
 ```bash
 cargo xtask vm-test
+# Or select a guest architecture explicitly (including cross-emulation):
+cargo xtask vm-test --arch aarch64 --release 6.12
+cargo xtask vm-test --arch x86-64 --release 6.12
 ```
 
 This builds static (musl) binaries, downloads a prebuilt upstream kernel, builds
@@ -30,6 +33,14 @@ in a separate pid + mount namespace via `unshare` — mirroring the containerize
 deployment — and verifies host-namespace clients still get correct traces,
 including fork-following across the boundary) as an unprivileged user inside the
 guest.
+
+The guest architecture defaults to the host. The harness selects the matching
+static binaries, kernel download, Docker rootfs platform, QEMU machine, and
+serial console together. Install `qemu-system-x86` for x64 or `qemu-system-arm`
+for ARM64, plus `docker`, `cpio`, `binutils`, `curl`, `zstd`, and `sudo`.
+Cross-architecture guests use TCG rather than KVM. ARM64 tests require kernel
+6.0+ for BPF trampolines. Legacy syscall scenarios use libc wrappers that issue
+the corresponding `*at` calls on ARM64; expected reports remain identical.
 
 ### Testing specific kernel versions
 
@@ -60,7 +71,9 @@ across libcs and coreutils:
 FSTRACE_VM_IMAGE=docker.io/library/alpine:latest cargo xtask vm-test --release 6.12
 ```
 
-CI runs every kernel against both images.
+CI runs every x64 kernel against both images, and ARM64 kernels from 6.1
+onward against both images on native ARM64 runners. Host tests and Clippy also
+run on both architectures. CI execution is distinct from local compile coverage.
 
 See [Kernel version support](kernel-support.md) for the full verified matrix and
 the minimum supported kernel. CI runs this suite across all supported LTS,
