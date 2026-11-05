@@ -2,6 +2,9 @@ name: ci
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-unit:
     name: Format, Clippy & Host Unit Tests
