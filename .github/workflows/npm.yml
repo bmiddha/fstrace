@@ -1,0 +1,116 @@
+name: npm distribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to npm (requires a matching vVERSION tag and trusted publishers)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-build
+      - run: cargo xtask dist --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-binaries-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  pack:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: npm-binaries-*
+          merge-multiple: true
+          path: dist
+      - run: cargo xtask npm-dist --skip-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-packages
+          path: dist/npm/*.tgz
+          if-no-files-found: error
+
+  test:
+    name: Test packed npm installs (Node ${{ matrix.node }})
+    needs: pack
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        node: ["22", "26"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-packages
+          path: dist/npm
+      - run: node --test node/tests/launcher.test.cjs
+      - name: Install pnpm test runner
+        run: |
+          npm install --prefix "$RUNNER_TEMP/fstrace-pnpm" --no-audit --no-fund pnpm@12.17.0
+          echo "$RUNNER_TEMP/fstrace-pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: node node/test-packed.mjs
+      - name: Test packed installs on musl
+        run: |
+          docker run --rm -v "$PWD:/workspace:ro" -w /workspace node:${{ matrix.node }}-alpine \
+            sh -c 'npm install --prefix /tmp/fstrace-pnpm --no-audit --no-fund pnpm@12.17.0 &&
+              export PATH="/tmp/fstrace-pnpm/node_modules/.bin:$PATH" &&
+              node --test node/tests/launcher.test.cjs && node node/test-packed.mjs'
+
+  publish:
+    if: inputs.publish
+    needs: [pack, test]
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    concurrency: npm-publish
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm install --global npm@12.2.1
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-packages
+          path: dist/npm
+      - name: Require a versioned release tag
+        shell: bash
+        run: |
+          version=$(node -p "require('./node/fstrace/package.json').version")
+          if [ "$GITHUB_REF" != "refs/tags/v${version}" ]; then
+            echo "::error::Select the v${version} tag to publish these packages."
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Publish platform packages before the wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm publish "dist/npm/fstrace-linux-x64-${VERSION}.tgz" --access public --provenance --registry https://registry.npmjs.org
+          npm publish "dist/npm/fstrace-linux-arm64-${VERSION}.tgz" --access public --provenance --registry https://registry.npmjs.org
+          npm publish "dist/npm/fstrace-fstrace-${VERSION}.tgz" --access public --provenance --registry https://registry.npmjs.org

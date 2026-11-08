@@ -6,5 +6,163 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    uses: ./.github/workflows/build.yml
+  lint-and-unit:
+    name: Format, Clippy & Host Unit Tests
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+
+      - name: 🦀 Install Rust toolchain
+        uses: ./.github/actions/setup-build
+
+      - name: 💄 Format check
+        run: cargo xtask fmt --check
+
+      - name: 📎 Clippy
+        run: cargo xtask lint
+
+      - name: 🔨 Build (release)
+        run: cargo xtask build
+
+      - name: 🧪 Host unit tests
+        run: cargo xtask test
+
+  vm-e2e:
+    name: VM e2e (${{ matrix.arch }} ${{ matrix.userspace.name }} on ${{ matrix.release }})
+    runs-on: ${{ matrix.runner }}
+    needs: lint-and-unit
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ["5.10", "5.15", "6.1", "6.6", "6.12", "6.18", "7.1", "7.2-rc"]
+        userspace:
+          - name: ubuntu
+            image: docker.io/library/ubuntu:latest
+          - name: alpine
+            image: docker.io/library/alpine:latest
+        arch: [x86-64, aarch64]
+        include:
+          - arch: x86-64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+        exclude:
+          - arch: aarch64
+            release: "5.10"
+          - arch: aarch64
+            release: "5.15"
+          - arch: aarch64
+            release: "6.1"
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+
+      - name: 🦀 Install Rust toolchain
+        uses: ./.github/actions/setup-build
+
+      - name: 💿 Install QEMU & tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-system-arm cpio binutils curl zstd
+
+      - name: ⚡ Enable KVM (best effort)
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: 🖥️ Run VM e2e suite
+        env:
+          FSTRACE_VM_IMAGE: ${{ matrix.userspace.image }}
+        run: cargo xtask vm-test --arch ${{ matrix.arch }} --release ${{ matrix.release }}
+
+  cross-dist:
+    name: Cross-Compile Release Artifacts
+    runs-on: ubuntu-latest
+    needs: lint-and-unit
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+
+      - name: 🦀 Install Rust toolchain
+        uses: ./.github/actions/setup-build
+
+      - name: Install release target
+        run: |
+          rustup target add ${{ matrix.target }}
+
+      - name: 🔗 Install aarch64 cross linker
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: 📦 Build release tarball
+        run: cargo xtask dist --target ${{ matrix.target }}
+
+      - name: ⬆️ Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: fstrace-${{ matrix.target }}
+          path: dist/*.tar.gz
+
+  npm-pack:
+    name: Pack scoped npm distribution
+    needs: cross-dist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fstrace-*-unknown-linux-musl
+          merge-multiple: true
+          path: dist
+      - run: cargo xtask npm-dist --skip-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-packages
+          path: dist/npm/*.tgz
+          if-no-files-found: error
+
+  npm-install:
+    name: Test packed npm installs (Node ${{ matrix.node }})
+    needs: npm-pack
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        node: ["22", "26"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-packages
+          path: dist/npm
+      - run: node --test node/tests/launcher.test.cjs
+      - name: Install pnpm test runner
+        run: |
+          npm install --prefix "$RUNNER_TEMP/fstrace-pnpm" --no-audit --no-fund pnpm@12.17.0
+          echo "$RUNNER_TEMP/fstrace-pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: node node/test-packed.mjs
+      - name: Test packed installs on musl
+        run: |
+          docker run --rm -v "$PWD:/workspace:ro" -w /workspace node:${{ matrix.node }}-alpine \
+            sh -c 'npm install --prefix /tmp/fstrace-pnpm --no-audit --no-fund pnpm@12.17.0 &&
+              export PATH="/tmp/fstrace-pnpm/node_modules/.bin:$PATH" &&
+              node --test node/tests/launcher.test.cjs && node node/test-packed.mjs'

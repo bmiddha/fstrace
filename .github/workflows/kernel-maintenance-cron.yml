@@ -1,0 +1,26 @@
+# Weekly kernel refresh. The called workflow skips while a task is open.
+# Manual dry runs file an issue without assigning the agent.
+name: kernel-maintenance-cron
+
+on:
+  schedule:
+    # 06:00 UTC every Monday.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compose the task issue but do not assign the Copilot agent."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  maintain:
+    name: 🗓️ Scheduled kernel maintenance
+    uses: ./.github/workflows/kernel-maintenance.yml
+    with:
+      dry_run: ${{ inputs.dry_run == true }}
+    secrets: inherit

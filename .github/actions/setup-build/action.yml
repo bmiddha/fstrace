@@ -1,0 +1,17 @@
+name: Set up Rust and BPF linker
+description: Install the workspace toolchain and a prebuilt BPF linker on Linux
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: rustup show
+    - shell: bash
+      env:
+        BPF_LINKER_VERSION: v0.13.0
+      run: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        sudo apt-get install -y zstd
+        curl -fsSL "https://github.com/aya-rs/bpf-linker/releases/download/${BPF_LINKER_VERSION}/bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst" \
+          | tar --zstd -xf - -C "$HOME/.cargo/bin"
+        bpf-linker --version

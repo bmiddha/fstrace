@@ -1,18 +1,17 @@
 {
-	"image": "mcr.microsoft.com/devcontainers/cpp:1-ubuntu-24.04",
+	"image": "mcr.microsoft.com/devcontainers/rust:2-trixie",
 	"features": {
 		"ghcr.io/devcontainers/features/node:2": {
-			"nodeGypDependencies": true,
-			"version": "18",
-			"pnpmVersion": "latest",
-			"nvmVersion": "latest"
+			"version": "26",
+			"npmVersion": "12.2.1"
 		}
 	},
+	"onCreateCommand": "rustup show && rustup component add rust-src clippy rustfmt && sudo apt-get update -qq && sudo apt-get install -y zstd && curl -fsSL https://github.com/aya-rs/bpf-linker/releases/download/v0.13.0/bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst | tar --zstd -xf - -C \"$HOME/.cargo/bin\"",
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"ms-vscode.cmake-tools",
-				"ms-vscode.cpptools"
+				"rust-lang.rust-analyzer",
+				"vadimcn.vscode-lldb"
 			]
 		}
 	}

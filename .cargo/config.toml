@@ -1,0 +1,19 @@
+# Cross-compilation linkers for the supported release targets.
+#
+# aarch64 glibc builds need a cross linker; install it with:
+#   apt-get install -y gcc-aarch64-linux-gnu
+#
+# Both musl targets link self-contained via rust-lld and need no
+# extra toolchain. See `cargo xtask dist` and docs/building.md.
+
+[alias]
+xtask = "run --package xtask --"
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+
+[target.aarch64-unknown-linux-musl]
+linker = "rust-lld"
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"

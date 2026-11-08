@@ -1,4 +1,7 @@
-README.md
-bin/x64/
-bin/arm64/
-*.tgz
+*
+!*/
+!.gitignore
+!package.json
+!resolve.cjs
+!bin/fstrace
+!bin/fstrace-daemon
